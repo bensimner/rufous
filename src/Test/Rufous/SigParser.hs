@@ -6,6 +6,7 @@ module Test.Rufous.SigParser
    ) where
 
 import Text.Parsec
+import Control.Applicative ((<$), (<*), (*>), liftA)
 
 data OperationType = Mutator | Observer | Generator
    deriving (Show)
@@ -23,7 +24,31 @@ data OperationSig =
 -- this is slightly hardcoded for now.
 parseSig :: String -> OperationSig
 parseSig s =
-   case s of
-      "T a"             -> OperationSig [] Generator
-      "T a -> a"        -> OperationSig [Version] Observer
-      "T a -> a -> T a" -> OperationSig [Version, NonVersion] Mutator
+   case parse parseSignature "<string>" s of
+      Right op -> op
+      Left  e  -> error (show e)
+
+classifyArgs :: [Arg] -> OperationType
+classifyArgs args =
+   if last args /= Version then
+      Observer
+   else
+      if Version `elem` init args then
+         Mutator
+      else
+         Generator
+
+parseSignature :: Parsec String () OperationSig
+parseSignature = (\as -> OperationSig as (classifyArgs as)) <$> (sepBy parseArg parseArrow <* eof)
+
+parseArrow :: Parsec String () String
+parseArrow = many space *> string "->" <* many space
+
+parseVersion :: Parsec String () Arg
+parseVersion = const Version <$> (char 'T' *> space *> char 'a')
+
+parseNonVersion :: Parsec String () Arg
+parseNonVersion = const NonVersion <$> char 'a'
+
+parseArg :: Parsec String () Arg
+parseArg = parseVersion <|> parseNonVersion
