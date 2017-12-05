@@ -1,19 +1,17 @@
 module Test.Rufous.DUG where
 
-import qualified Test.Rufous.Signature as Sig
+import qualified Data.Map as M
 
-data DUGArg =
-      VersionNode Int
-    | NonVersionArg Int
+type Version = Int
 
-    deriving (Show)
+data Arg =
+     VersionNode Version
+   | NonVersion  Int
+   deriving (Show)
 
-data DUG1 =
-    DUG1 {
-        versions :: [Int]
-        , args :: Int -> [DUGArg]
-    }
-
-instance Show DUG1 where
-    -- naive pretty print DUG
-    show (DUG1 v args) = unlines [show a ++ " -> " ++ (show $ args a) | a <- v]
+data DUG =
+   DUG
+      { versions :: [Version]
+      , operations :: M.Map Version [Arg]
+      }
+   deriving (Show)

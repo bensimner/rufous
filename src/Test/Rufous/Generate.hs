@@ -1,67 +1,110 @@
 module Test.Rufous.Generate where
 
+import Control.Monad
 import System.Random
 
-import qualified Test.Rufous.Profile   as Prof
-import qualified Test.Rufous.Signature as Sig
-import qualified Test.Rufous.DUG       as DUG
+import qualified Data.Map as M
 
-data GenerationOptions =
-    GenerationOptions {
-        frontierSize :: Int
-    }
+import Test.Rufous.RndUtil
 
-defaultGenerationOptions =
-    GenerationOptions {
-        frontierSize = 15
-    }
+import qualified Test.Rufous.Signature as S
+import qualified Test.Rufous.Profile as P
 
--- Intermediate DUG during generation
---  there's an easier representation of a DUG and nodes here than the final one
--- namely as a list of versions
-data GenDUG =
-    GenDUG {
-        operationsBuffer :: [VersionNode]  -- these are operations we're building up
-    }
+data DUGArg = Version Int | NonVersion Int
+   deriving (Eq, Show)
 
-data DUGOperation =
-    Operation {
-        operation :: Sig.OperationId
-        , argsBuffer :: [VersionNode]
-    }
+type VersionNode = [DUGArg]
 
-data VersionNode =
-    Node {
-        operation :: Sig.OperationId     -- the name of the operation, i.e. "enqueue"
-        , args :: [DUG.DUGArg]           -- the applied arguments to this, i.e. "NonVersionArg 2"
-        , todoList :: [Sig.OperationId]  -- the list of operations to apply
-    }
+data BufferedOperation =
+   BufferedOperation
+      { bufOpName :: String
+      , bufArgs   :: [DUGArg]
+      , remaining :: [S.Arg]
+      }
+      deriving (Eq, Show)
 
-chooseGenerator :: Sig.Signature st -> Prof.Profile -> IO Sig.OperationId
-chooseGenerator s p = do
-    let gens = Sig.generators s
-    let n = length gens
-    i <- randomRIO (0, n - 1)
-    return $ Sig.opName (gens !! i)
+data GenDug =
+   GenDug
+      { versions :: [VersionNode]         -- the DUG built so far
+      , operations :: [BufferedOperation] -- operations yet to add
+      }
+      deriving (Eq, Show)
 
+emptyDug :: GenDug
+emptyDug = GenDug [] []
 
--- Seeding creates a new DUG with a small number of generated versions
--- with no operations.
-seedDUG :: Sig.Signature st -> Prof.Profile -> IO GenDUG
-seedDUG s p = do
-    generator <- chooseGenerator s p
-    let node = Node generator [] []
-    return $ GenDUG [node]
+-- add a thing to the DUG
+inflateDug :: S.Signature -> P.Profile -> GenDug -> IO GenDug
+inflateDug s p d = do
+   let typeWeights = [ (inflateDug_Operation s p (P.normaliseWeights $ P.mutatorWeights p) d, P.pMutator p)
+                     , (inflateDug_Operation s p (P.normaliseWeights $ P.observerWeights p) d, P.pObserver p)
+                     , (inflateDug_Operation s p (P.normaliseWeights $ P.generatorWeights p) d, P.pGenerator p) ]
+   join $ chooseRandom typeWeights
 
-generateDUG :: Sig.Signature st -> Prof.Profile -> IO DUG.DUG1
-generateDUG s p = undefined
+inflateDug_Operation :: S.Signature -> P.Profile -> P.ProfileEntry -> GenDug -> IO GenDug
+inflateDug_Operation s p m d = do
+   opName <- chooseOperation m
+   let o = BufferedOperation opName [] (S.opArgs $ S.sig $ S.operations s M.! opName)
+   return $ d { operations=o : operations d }
 
--- add a new node to the DUG
-addNewNode :: Sig.Signature st -> Prof.Profile -> DUG.DUG1 -> IO DUG.DUG1
-addNewNode s p = undefined
+tryCreateFromBuffered :: GenDug -> IO GenDug
+tryCreateFromBuffered d = do
+   (ops, vs) <- new (operations d) (versions d)
+   return $ GenDug vs ops
+   where
+      new :: [BufferedOperation] -> [VersionNode] -> IO ([BufferedOperation], [VersionNode])
+      new (op : ops) vs = do
+         (op', vs') <- tryFillOp op vs
+         (ops', vs'') <- new ops vs'
+         case op' of
+            Just op'' -> return (op'' : ops', vs'')
+            Nothing   -> return (       ops', vs'')
+      new [] vs = return ([], vs)
 
+tryFillOp :: BufferedOperation -> [VersionNode] -> IO (Maybe BufferedOperation, [VersionNode])
+tryFillOp bOp vs = do
+   (args, rem) <- go (remaining bOp)
+   let newArgs = bufArgs bOp ++ args
+   if null rem then
+      return $  (Nothing, newArgs : vs)
+   else do
+      let bufOp' = BufferedOperation (bufOpName bOp) (bufArgs bOp ++ args) (rem)
+      return (Just bufOp', vs)
+   where
+      go :: [S.Arg] -> IO ([DUGArg], [S.Arg])
+      go (a : as) =
+         case a of
+            S.NonVersion -> do
+               r <- chooseNonVersion
+               (args, rem) <- go as
+               return (NonVersion r : args, rem)
+            S.Version ->
+               if not $ null vs then do
+                  v <- chooseUniform $ [0 .. (length vs) - 1]
+                  (args, rem) <- go as
+                  return (Version v : args, rem)
+               else
+                  return ([], [])
 
-generateExample p = do
-    let sumOfWeights = sum $ map snd (Prof.operationWeights p)
-    a <- randomRIO (1, sumOfWeights)
-    return (DUG.DUG1 [a] (const []))
+      go [] = return ([], [])
+
+generate :: S.Signature -> P.Profile -> IO GenDug
+generate s p = do
+   k <- randomRIO (5, 25)
+   d' <- build emptyDug k
+   flatten d'
+   where
+      build :: GenDug -> Int -> IO GenDug  -- I do not know why I need this?
+      build d 0 = return d
+      build d k = do
+         d' <- inflateDug s p d
+         build d' (k - 1)
+
+      -- now run tryCreateFromBuffered until fixed point is hit
+      flatten :: GenDug -> IO GenDug
+      flatten d = do
+         d' <- tryCreateFromBuffered d
+         if d == d' then
+            return d'
+         else
+            flatten d'

@@ -1,30 +1,41 @@
 module Test.Rufous.Profile where
 
-import qualified Test.Rufous.Signature as Sig
+import qualified Data.Map as M
 
-data UserProfile =
-    UserProfile {
-        operationWeights :: [(String, Int)]
-        , propPersistentMutation :: Rational
-        , propPersistentObservation :: Rational
-    }
-
-    deriving (Show)
+type ProfileEntry = M.Map String Float
 
 data Profile =
-    Profile {
-        mutatorProb :: [(String, Rational)]
-        , generatorProb :: [(String, Rational)]
-        , observerProb :: [(String, Rational)]
-        , propPersistentMutations :: Rational
-        , propPersistentObservations :: Rational
-    }
+   Profile
+      { mutatorWeights :: ProfileEntry
+      , observerWeights :: ProfileEntry
+      , generatorWeights :: ProfileEntry
+      , persistentMutationWeight :: Float       -- must be between 0 and 1
+      , persistentObservationWeight :: Float    -- must be between 0 and 1
+      }
 
-pMutator :: Sig.Signature -> Profile -> Rational
-pMutator s p = sum $ map snd $ mutatorProb p
+allWeights :: Profile -> ProfileEntry
+allWeights p = M.fromList $ concat (M.toList <$> [mutatorWeights p, observerWeights p, generatorWeights p])
 
-pGenerator :: Sig.Signature -> Profile -> Rational
-pGenerator s p = sum $ map snd $ generatorProb p
+normaliseProfile :: Profile -> Profile
+normaliseProfile p =
+   Profile (f $ mutatorWeights p)
+           (f $ observerWeights p)
+           (f $ generatorWeights p)
+           (persistentMutationWeight p)
+           (persistentObservationWeight p)
+   where
+      pr = sum $ allWeights p
+      f m = (/ pr) <$> m
 
-pObserver :: Sig.Signature -> Profile -> Rational
-pObserver s p = sum $ map snd $ observerProb p
+normaliseWeights :: ProfileEntry -> ProfileEntry
+normaliseWeights ws = (/ pr) <$> ws
+   where
+      pr = sum ws
+
+pMutator :: Profile -> Float
+pMutator p = sum $ mutatorWeights p
+pObserver p = sum $ observerWeights p
+pGenerator p = sum $ generatorWeights p
+
+pOperation :: Profile -> String -> Float
+pOperation p o = (allWeights p) M.! o
