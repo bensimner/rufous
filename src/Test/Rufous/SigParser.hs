@@ -5,8 +5,8 @@ module Test.Rufous.SigParser
    , parseSig
    ) where
 
-import Text.Parsec
-import Control.Applicative ((<$), (<*), (*>), liftA)
+import Text.Parsec (Parsec, parse, many, string, space, char, sepBy, eof)
+import Control.Applicative ((<*), (*>), (<|>))
 
 data OperationType = Mutator | Observer | Generator
    deriving (Show)

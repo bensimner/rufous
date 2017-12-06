@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module Main where
 
 import Data.Map
@@ -6,7 +8,6 @@ import qualified Test.Rufous.DUG as D
 import qualified Test.Rufous.Generate as G
 import qualified Test.Rufous.Profile as P
 import qualified Test.Rufous.Signature as S
-
 
 s =
     S.signature "T"
