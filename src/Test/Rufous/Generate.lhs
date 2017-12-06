@@ -16,6 +16,10 @@ The representation for a DUG during generation is simply a pair:
     - The set of already-created versions, that can be immediately used in operations
     - and the set of operations that have been chosen but haven't been committed into the DUG yet
 
+
+This implementation chooses to use a lists for the sets of nodes/operations
+
+
 > data GenDug =
 >    GenDug
 >       { versions :: [VersionNode]         -- the DUG built so far
@@ -23,9 +27,26 @@ The representation for a DUG during generation is simply a pair:
 >       }
 >       deriving (Eq, Show)
 
-(Temporarily) a version is just an operation tagged with each argument
+A Version node is a node in the DUG that has been created. 
+It should be noted here that VersionNode's need not actually contain a Version, they may just be phantom nodes from observations.
 
-> type VersionNode = (String, [DUGArg])
+> type VersionNode = (S.Operation, [DUGArg])
+
+Each version has a generation state, containing information about operations performed on it.
+A version could have no further mutations and be `Dead' or be `Mutated' by a future operation.
+A version could also be `Visible' through an observation or `Hidden' with no observations over it
+
+This information is carried along during generation, and is computable from the DUG, but isn't directly stored in the DUG
+Instead associated information is stored in a state object that gets passed around:
+
+> data GenState = 
+>   GenState
+>       { dug :: GenDug
+>       , sig :: S.Signature
+>       , profile :: P.Profile
+>       , mutatorBins :: ([Int], [Int])  -- for Dead/Mutated
+>       , observerBins :: ([Int], [Int]) -- for Hidden/Visible
+>       }
 
 The Arguments of a DUG are either arcs between Version's on the DUG or a hard-coded non-version argument
 For simplicity we assume all non-version arguments are integers for now.
@@ -34,13 +55,15 @@ For simplicity we assume all non-version arguments are integers for now.
 >    deriving (Eq, Show)
 
 Operations still to be committed are /buffered/
-A Buffered operation consists of the name of the operation, the partially committed arguments and the set of remaining argument types (Version | NonVersion)
+A Buffered operation consists of the name of the operation, the partially committed arguments, the set of remaining argument types (Version | NonVersion)
+    and whether the committed operation should be a persistent application or not
 
 > data BufferedOperation =
 >    BufferedOperation
->       { bufOpName :: String
+>       { bufOp     :: S.Operation
 >       , bufArgs   :: [DUGArg]
 >       , remaining :: [S.Arg]
+>       , persistent :: Bool
 >       }
 >       deriving (Eq, Show)
 >
@@ -64,20 +87,24 @@ This is achieved by picking each operation with probability of their weights:
 
 > emptyDug :: GenDug
 > emptyDug = GenDug [] []
-
-> -- add a thing to the DUG
-> inflateDug :: S.Signature -> P.Profile -> GenDug -> IO GenDug
-> inflateDug s p d = do
->    let typeWeights = [ (inflateDug_Operation s p (P.normaliseWeights $ P.mutatorWeights p) d, P.pMutator p)
->                      , (inflateDug_Operation s p (P.normaliseWeights $ P.observerWeights p) d, P.pObserver p)
->                      , (inflateDug_Operation s p (P.normaliseWeights $ P.generatorWeights p) d, P.pGenerator p) ]
+> 
+> inflateDug :: GenState -> IO GenState
+> inflateDug st = do
+>    let p = profile st
+>    let typeWeights = [ (inflateDug_Operation (P.normaliseWeights $ P.mutatorWeights p) (P.persistentMutationWeight p) st, P.pMutator p)
+>                      , (inflateDug_Operation (P.normaliseWeights $ P.observerWeights p) (P.persistentObservationWeight p) st, P.pObserver p)
+>                      , (inflateDug_Operation (P.normaliseWeights $ P.generatorWeights p) 0.0 st, P.pGenerator p) ]
 >    join $ chooseRandom typeWeights
 >
-> inflateDug_Operation :: S.Signature -> P.Profile -> P.ProfileEntry -> GenDug -> IO GenDug
-> inflateDug_Operation s p m d = do
+> inflateDug_Operation :: P.ProfileEntry -> Float -> GenState -> IO GenState
+> inflateDug_Operation m p st = do
 >    opName <- chooseOperation m
->    let o = BufferedOperation opName [] (S.opArgs $ S.sig $ S.operations s M.! opName)
->    return $ d { operations=o : operations d }
+>    let op = S.operations (sig st) M.! opName
+>    persistent <- randomFlag p
+>    let o = BufferedOperation op [] (S.opArgs $ S.sig op) persistent
+>    let d = dug st
+>    let d' = d { operations=o : operations d }
+>    return $ st { dug=d' }
 
 Deflation
 ---------
@@ -89,29 +116,31 @@ The deflation step is the complex one, and the current (simple) alogorithm is as
             - If all arguments get committed (and `remaining == []`) then commit the whole operation and remove it from the buffer
     - Compute the deflate function to a fixed point
 
-> tryDeflate :: GenDug -> IO GenDug
-> tryDeflate d = do
->    (ops, vs) <- new (operations d) (versions d)
->    return $ GenDug vs ops
+> tryDeflate :: GenState -> IO GenState
+> tryDeflate st = do
+>    let d = dug st
+>    (ops, vs) <- deflate (operations d) (versions d)
+>    let d' = GenDug vs ops
+>    return $ st { dug = d' }
 >    where
->       new :: [BufferedOperation] -> [VersionNode] -> IO ([BufferedOperation], [VersionNode])
->       new (op : ops) vs = do
+>       deflate :: [BufferedOperation] -> [VersionNode] -> IO ([BufferedOperation], [VersionNode])
+>       deflate (op : ops) vs = do
 >          (op', vs') <- tryCommitOp op vs
->          (ops', vs'') <- new ops vs'
+>          (ops', vs'') <- deflate ops vs'
 >          case op' of
 >             Just op'' -> return (op'' : ops', vs'')
 >             Nothing   -> return (       ops', vs'')
->       new [] vs = return ([], vs)
+>       deflate [] vs = return ([], vs)
 >
 > tryCommitOp :: BufferedOperation -> [VersionNode] -> IO (Maybe BufferedOperation, [VersionNode])
 > tryCommitOp bOp vs = do
 >    (args, rem) <- go (remaining bOp)
 >    let newArgs = bufArgs bOp ++ args
->    if null rem then
->       let versNode = (bufOpName bOp, newArgs)
->       in return (Nothing, versNode : vs)
+>    if null rem then do
+>       let versNode = (bufOp bOp, newArgs)
+>       return (Nothing, versNode : vs)
 >    else do
->       let bufOp' = BufferedOperation (bufOpName bOp) (bufArgs bOp ++ args) (rem)
+>       let bufOp' = BufferedOperation (bufOp bOp) (bufArgs bOp ++ args) (rem) (persistent bOp)
 >       return (Just bufOp', vs)
 >    where
 >       go :: [S.Arg] -> IO ([DUGArg], [S.Arg])
@@ -122,6 +151,7 @@ The deflation step is the complex one, and the current (simple) alogorithm is as
 >                (args, rem) <- go as
 >                return (NonVersion r : args, rem)
 >             S.Version ->
+>                -- todo: Compute subgraph of vs that is applicable here
 >                if not $ null vs then do
 >                   v <- chooseUniform $ [0 .. (length vs) - 1]
 >                   (args, rem) <- go as
@@ -150,21 +180,23 @@ This deflation algorithm has many problems:
 > generate :: S.Signature -> P.Profile -> IO GenDug
 > generate s p = do
 >    k <- randomRIO (5, 25)
->    d' <- build emptyDug k
->    flatten d'
+>    let emptyState = GenState emptyDug s p ([], []) ([], [])
+>    st <- build emptyState k
+>    st' <- flatten st
+>    return $ dug st'
 >    where
->       build :: GenDug -> Int -> IO GenDug  -- I do not know why I need this?
->       build d 0 = return d
->       build d k = do
->          d' <- inflateDug s p d
->          build d' (k - 1)
+>       build :: GenState -> Int -> IO GenState  -- I do not know why I need this?
+>       build st 0 = return st
+>       build st k = do
+>          st' <- inflateDug st
+>          build st' (k - 1)
 >
 >       -- now run tryDeflate until fixed point is hit
->       flatten :: GenDug -> IO GenDug
->       flatten d = do
->          d' <- tryDeflate d
->          if d == d' then
->             return d'
+>       flatten :: GenState -> IO GenState
+>       flatten st = do
+>          st' <- tryDeflate st
+>          if dug st == dug st' then
+>             return st'
 >          else
->             flatten d'
+>             flatten st'
 >

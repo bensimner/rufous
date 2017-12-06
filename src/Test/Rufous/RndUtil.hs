@@ -31,3 +31,7 @@ chooseUniform xs = chooseRandom weighted
       weighted = zip xs (repeat pr)
       pr = 1 / (fromIntegral n)
       n = length xs
+
+randomFlag :: Float -> IO Bool
+randomFlag p = (p >) <$> randomRIO (0.0, 1.0) 
+
