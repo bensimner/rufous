@@ -50,7 +50,7 @@ This representation allows easy displaying, such as a graphviz file
 >               VersionNodeArg j -> Just (j, i)
 >               _                -> Nothing
 > nodeLabel :: DUG -> Int -> String
-> nodeLabel d ix = "\\\\" ++ intercalate " " lambdaArgs ++ " -> " ++ name ++ " " ++ intercalate " " bodyArgs
+> nodeLabel d ix = prefix ++ name ++ " " ++ intercalate " " bodyArgs
 >   where
 >       args :: [Arg]
 >       args = operations d M.! ix
@@ -64,7 +64,7 @@ This representation allows easy displaying, such as a graphviz file
 >               NonVersionArg  k -> args2defn as (lambdaArgs, bodyArgs ++ [show k])
 >       args2defn [] vs = vs
 >       (lambdaArgs, bodyArgs) = args2defn args ([], [])
->       prefix = if null lambdaArgs then "" else ""
+>       prefix = if null lambdaArgs then "" else "\\\\" ++ intercalate " " lambdaArgs ++ " -> "
 
 Utility functions:
 
