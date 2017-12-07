@@ -16,21 +16,22 @@ The representation for a DUG during generation is simply a pair:
     - The set of already-created versions, that can be immediately used in operations
     - and the set of operations that have been chosen but haven't been committed into the DUG yet
 
-
 This implementation chooses to use a lists for the sets of nodes/operations
-
 
 > data GenDug =
 >    GenDug
->       { versions :: [VersionNode]         -- the DUG built so far
+>       { versions :: [Node]         -- the DUG built so far
 >       , operations :: [BufferedOperation] -- operations yet to add
 >       }
 >       deriving (Eq, Show)
 
-A Version node is a node in the DUG that has been created. 
-It should be noted here that VersionNode's need not actually contain a Version, they may just be phantom nodes from observations.
+Whilst the Node's are primarily used for choosing Version arguments, they may be the result of an Observation,
+and so do not represent an actual version of the data structure.
 
-> type VersionNode = (S.Operation, [DUGArg])
+> type Node = (S.Operation, [DUGArg])
+
+Generation State 
+----------------
 
 Each version has a generation state, containing information about operations performed on it.
 A version could have no further mutations and be `Dead' or be `Mutated' by a future operation.
@@ -66,7 +67,6 @@ A Buffered operation consists of the name of the operation, the partially commit
 >       , persistent :: Bool
 >       }
 >       deriving (Eq, Show)
->
 
 Generation
 ==========
@@ -117,49 +117,85 @@ The deflation step is the complex one, and the current (simple) alogorithm is as
     - Compute the deflate function to a fixed point
 
 > tryDeflate :: GenState -> IO GenState
-> tryDeflate st = do
->    let d = dug st
->    (ops, vs) <- deflate (operations d) (versions d)
->    let d' = GenDug vs ops
->    return $ st { dug = d' }
+> tryDeflate state = do
+>    let state' = state { dug=d { operations=[] } }
+>    deflate (operations d) state'
 >    where
->       deflate :: [BufferedOperation] -> [VersionNode] -> IO ([BufferedOperation], [VersionNode])
->       deflate (op : ops) vs = do
->          (op', vs') <- tryCommitOp op vs
->          (ops', vs'') <- deflate ops vs'
+>       d = dug state
+>       deflate :: [BufferedOperation] -> GenState -> IO GenState
+>       deflate (op : ops) st = do
+>          (op', st') <- tryCommitOp op st
+>          st'' <- deflate ops st'
+>          let d' = dug st''
+>          let ops' = operations d'
 >          case op' of
->             Just op'' -> return (op'' : ops', vs'')
->             Nothing   -> return (       ops', vs'')
->       deflate [] vs = return ([], vs)
->
-> tryCommitOp :: BufferedOperation -> [VersionNode] -> IO (Maybe BufferedOperation, [VersionNode])
-> tryCommitOp bOp vs = do
+>             Just op'' -> return $ st'' { dug=d' { operations=op'' : ops' } }
+>             Nothing   -> return $ st'' { dug=d' { operations=ops' } }
+>       deflate [] st = return st
+
+Given a buffered operation, it can attempt to be committed to the DUG
+    - If each remaining Arg in the operation can be committed then:
+        - The operation can be removed from the buffer
+        - The result can be added to the list of nodes
+    - If not all of them can:
+        - Commit those that can be
+        - And return the partially applied operation to the buffer
+
+> tryCommitOp :: BufferedOperation -> GenState -> IO (Maybe BufferedOperation, GenState)
+> tryCommitOp bOp st = do
 >    (args, rem) <- go (remaining bOp)
 >    let newArgs = bufArgs bOp ++ args
 >    if null rem then do
 >       let versNode = (bufOp bOp, newArgs)
->       return (Nothing, versNode : vs)
+>       let d = dug st
+>       return (Nothing, st { dug=d { versions=versNode : versions d } } )
 >    else do
 >       let bufOp' = BufferedOperation (bufOp bOp) (bufArgs bOp ++ args) (rem) (persistent bOp)
->       return (Just bufOp', vs)
+>       return (Just bufOp', st)
 >    where
 >       go :: [S.Arg] -> IO ([DUGArg], [S.Arg])
->       go (a : as) =
->          case a of
->             S.NonVersion -> do
->                r <- chooseNonVersion
->                (args, rem) <- go as
->                return (NonVersion r : args, rem)
->             S.Version ->
->                -- todo: Compute subgraph of vs that is applicable here
->                if not $ null vs then do
->                   v <- chooseUniform $ [0 .. (length vs) - 1]
->                   (args, rem) <- go as
->                   return (Version v : args, rem)
->                else
->                   return ([], [])
->
+>       go (a : as) = do
+>          maybeArg <- tryCommitArg a st
+>          (args, rem) <- go as
+>          case maybeArg of
+>             Just dArg -> return (dArg : args, rem)
+>             Nothing   -> return (args, rem)
 >       go [] = return ([], [])
+> 
+> tryCommitArg :: S.Arg -> GenState -> IO (Maybe DUGArg)
+> tryCommitArg a st =
+>    case a of
+>       S.NonVersion -> do
+>           r <- chooseNonVersion
+>           return $ Just (NonVersion r)
+>       S.Version -> do
+>           let valid = validNodes st
+>           if not . null $ valid then do  -- todo: prune observations and invalid operations
+>               v <- chooseUniform valid
+>               return $ Just (Version v)
+>           else
+>               return Nothing
+
+To discover if a Node is valid:
+    - check that it is a Version
+    - check that it comes from the correct bin
+
+> checkNode :: GenState -> Int -> Bool
+> checkNode st ix = t /= S.Observer
+>   where
+>       d = dug st
+>       vs = versions d
+>       (op, _) = vs !! ix
+>       t = S.opType $ S.sig op
+
+Then collect these together
+
+> validNodes :: GenState -> [Int]
+> validNodes st = filter (checkNode st) ixs
+>   where
+>       d = dug st
+>       vs = versions d
+>       ixs = [0 .. (length vs) - 1]
 
 This deflation algorithm has many problems:
     1. Model state and pre-conditions
@@ -172,7 +208,7 @@ This deflation algorithm has many problems:
         Currently version arguments are chosen randomly, even if point 1) was satisifed there is an additional constraint of choosing
         versions that already have been mutated for picking persistent operations
 
-        Fix: store whether each buffered operation is persistent, and whether each VersionNode has already been mutated
+        Fix: store whether each buffered operation is persistent, and whether each Node has already been mutated
     3. Choosing non-version arguments
         Currently for simplicity we assume all non-version arguments are Int
         Obviously in the real world this isn't true, the hard part is choosing a representation that allows that type to fluctuate (heterogenous lists?)
