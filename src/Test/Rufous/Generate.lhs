@@ -8,6 +8,7 @@
 >
 > import qualified Test.Rufous.Signature as S
 > import qualified Test.Rufous.Profile as P
+> import qualified Test.Rufous.DUG as D
 
 Representation
 ==============
@@ -101,7 +102,7 @@ This is achieved by picking each operation with probability of their weights:
 >    opName <- chooseOperation m
 >    let op = S.operations (sig st) M.! opName
 >    persistent <- randomFlag p
->    let o = BufferedOperation op [] (S.opArgs $ S.sig op) persistent
+>    let o = BufferedOperation op [] (init $ S.opArgs $ S.sig op) persistent
 >    let d = dug st
 >    let d' = d { operations=o : operations d }
 >    return $ st { dug=d' }
@@ -236,3 +237,27 @@ This deflation algorithm has many problems:
 >          else
 >             flatten st'
 >
+
+Conversion and interaction
+==========================
+
+To interact with other components of Rufous, the DUGs here must be transformed into something more graph-like.
+
+> genDug2DUG :: GenDug -> D.DUG
+> genDug2DUG gd =
+>   D.DUG
+>       { D.versions=vs
+>       , D.operations=os
+>       }
+>   where
+>       gdVersions = versions gd
+>       vs = map (S.opName . fst) gdVersions
+>       dugArg2Arg da = 
+>           case da of
+>               Version i    -> D.VersionNodeArg i
+>               NonVersion i -> D.NonVersionArg i
+>       op2DArgs i = snd $ gdVersions !! i
+>       op2Args i = (i, map dugArg2Arg (op2DArgs i))
+>       os = M.fromList [op2Args i | i <- [0 .. (length vs) - 1]]
+
+

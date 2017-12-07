@@ -11,7 +11,7 @@
 > import qualified Data.Map as M
 > import Test.Rufous.SigParser
 
-An ADT is simply a collection of operations, tagged with a unqiue name
+An ADT is simply a collection of operations, tagged with a unqiue name.
 
 > data Signature =
 >    Signature

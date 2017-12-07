@@ -24,7 +24,7 @@ p =
         , P.persistentObservationWeight = 0.5
         }
 
-gen = G.generate s p
+gen = G.genDug2DUG <$> G.generate s p >>= D.dug2dot
 
 {-
 example_dug :: D.DUG1
