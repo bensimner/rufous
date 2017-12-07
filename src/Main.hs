@@ -17,26 +17,14 @@ s =
 
 p =
     P.Profile
-        { P.mutatorWeights = fromList [("enqueue", 1/3), ("dequeue", 1/3)]
-        , P.generatorWeights = fromList [("empty", 1/3)]
+        { P.mutatorWeights = fromList [("enqueue", 3/6), ("dequeue", 2/6)]
+        , P.generatorWeights = fromList [("empty", 1/6)]
         , P.observerWeights = fromList []
         , P.persistentMutationWeight = 0.5
         , P.persistentObservationWeight = 0.5
         }
 
 gen = G.genDug2DUG <$> G.generate s p >>= D.dug2dot
-
-{-
-example_dug :: D.DUG1
-example_dug =
-    D.DUG1 {
-        D.versions = [1, 2]
-        , D.args = \i ->
-            case i of
-                1 -> [D.VersionNode 2]
-                2 -> []
-    }
--}
 
 main :: IO ()
 main = putStrLn "Hello, Haskell!"

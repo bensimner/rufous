@@ -102,7 +102,7 @@ This is achieved by picking each operation with probability of their weights:
 >    opName <- chooseOperation m
 >    let op = S.operations (sig st) M.! opName
 >    persistent <- randomFlag p
->    let o = BufferedOperation op [] (init $ S.opArgs $ S.sig op) persistent
+>    let o = BufferedOperation op [] (S.opArgs $ S.sig op) persistent
 >    let d = dug st
 >    let d' = d { operations=o : operations d }
 >    return $ st { dug=d' }
@@ -149,7 +149,7 @@ Given a buffered operation, it can attempt to be committed to the DUG
 >    if null rem then do
 >       let versNode = (bufOp bOp, newArgs)
 >       let d = dug st
->       return (Nothing, st { dug=d { versions=versNode : versions d } } )
+>       return (Nothing, st { dug=d { versions=versions d ++ [versNode] } } )
 >    else do
 >       let bufOp' = BufferedOperation (bufOp bOp) (bufArgs bOp ++ args) (rem) (persistent bOp)
 >       return (Just bufOp', st)
@@ -160,7 +160,7 @@ Given a buffered operation, it can attempt to be committed to the DUG
 >          (args, rem) <- go as
 >          case maybeArg of
 >             Just dArg -> return (dArg : args, rem)
->             Nothing   -> return (args, rem)
+>             Nothing   -> return (args, a : rem)
 >       go [] = return ([], [])
 > 
 > tryCommitArg :: S.Arg -> GenState -> IO (Maybe DUGArg)
@@ -216,7 +216,7 @@ This deflation algorithm has many problems:
 
 > generate :: S.Signature -> P.Profile -> IO GenDug
 > generate s p = do
->    k <- randomRIO (5, 25)
+>    k <- randomRIO (5, 50)
 >    let emptyState = GenState emptyDug s p ([], []) ([], [])
 >    st <- build emptyState k
 >    st' <- flatten st

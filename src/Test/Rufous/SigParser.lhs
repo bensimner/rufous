@@ -38,6 +38,7 @@ Hence an operation's signature is simply a pair, the function signature and its 
 >    OperationSig
 >       { opArgs :: [Arg]
 >       , opType :: OperationType
+>       , retTy :: Arg
 >       }
 >    deriving (Eq, Show)
 
@@ -57,7 +58,7 @@ The parser is a straight-forward parser built from combinators for each producti
 > 
 > 
 > parseSignature :: Parsec String () OperationSig
-> parseSignature = (\as -> OperationSig as (classifyArgs as)) <$> (sepBy parseArg parseArrow <* eof)
+> parseSignature = (\as -> OperationSig (init as) (classifyArgs as) (last as)) <$> (sepBy parseArg parseArrow <* eof)
 > 
 > parseArrow :: Parsec String () String
 > parseArrow = many space *> string "->" <* many space
