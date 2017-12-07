@@ -11,6 +11,7 @@ data Profile =
       , generatorWeights :: ProfileEntry
       , persistentMutationWeight :: Float       -- must be between 0 and 1
       , persistentObservationWeight :: Float    -- must be between 0 and 1
+      , mortality :: Float                      -- must be between 0 and 1
       }
 
 allWeights :: Profile -> ProfileEntry
@@ -23,6 +24,7 @@ normaliseProfile p =
            (f $ generatorWeights p)
            (persistentMutationWeight p)
            (persistentObservationWeight p)
+           (mortality p)
    where
       pr = sum $ allWeights p
       f m = (/ pr) <$> m

@@ -3,6 +3,7 @@
 > import System.Random
 >
 > import qualified Data.Map as M
+> import qualified Data.Set as St
 >
 > import Test.Rufous.RndUtil
 >
@@ -35,6 +36,21 @@ Generation State
 ----------------
 
 Each version has a generation state, containing information about operations performed on it.
+In order to generate persistent applications, of both mutators and observers, we need to track the persistent nature of each state.
+There are 3 states per node - Persistent, Dead, Ephemeral, Infant
+    - A Persistent node is one that either has been or will be mutated by multiple other operations
+    - An Ephemeral node is one that should be mutated only once
+    - An Infant node is one that has been created and has no mutations yet
+    Equivalenty there are these 3 states for observation
+
+Nodes themselves can also have a state:
+    - A Dead node is one that should not be mutated
+    - Living nodes are ones that should be mutated furthur
+
+    This state allows us to control the mortality of the generated DUG, just by tweaking the initial probability of each state
+    With the caveat that this will only allow control over killing nodes, not preventing new ones!
+        (A low mortality with high generator probability can not be stopped with this method alone!)
+
 A version could have no further mutations and be `Dead' or be `Mutated' by a future operation.
 A version could also be `Visible' through an observation or `Hidden' with no observations over it
 
@@ -46,8 +62,11 @@ Instead associated information is stored in a state object that gets passed arou
 >       { dug :: GenDug
 >       , sig :: S.Signature
 >       , profile :: P.Profile
->       , mutatorBins :: ([Int], [Int])  -- for Dead/Mutated
->       , observerBins :: ([Int], [Int]) -- for Hidden/Visible
+>       , livingNodes :: St.Set Int
+>       , mutatorInfants :: St.Set Int
+>       , mutatorPersistents :: St.Set Int
+>       , observerInfants :: St.Set Int
+>       , observerPersistents :: St.Set Int
 >       }
 
 The Arguments of a DUG are either arcs between Version's on the DUG or a hard-coded non-version argument
@@ -148,8 +167,8 @@ Given a buffered operation, it can attempt to be committed to the DUG
 >    let newArgs = bufArgs bOp ++ args
 >    if null rem then do
 >       let versNode = (bufOp bOp, newArgs)
->       let d = dug st
->       return (Nothing, st { dug=d { versions=versions d ++ [versNode] } } )
+>       st' <- generateNodeState st (length vs)
+>       return (Nothing, st' `withVersions` (vs ++ [versNode]))
 >    else do
 >       let bufOp' = BufferedOperation (bufOp bOp) (bufArgs bOp ++ args) (rem) (persistent bOp)
 >       return (Just bufOp', st)
@@ -162,6 +181,7 @@ Given a buffered operation, it can attempt to be committed to the DUG
 >             Just dArg -> return (dArg : args, rem)
 >             Nothing   -> return (args, a : rem)
 >       go [] = return ([], [])
+>       vs = versions (dug st)
 > 
 > tryCommitArg :: S.Arg -> GenState -> IO (Maybe DUGArg)
 > tryCommitArg a st =
@@ -176,6 +196,15 @@ Given a buffered operation, it can attempt to be committed to the DUG
 >               return $ Just (Version v)
 >           else
 >               return Nothing
+> 
+> -- generates the node state of Living/Dead
+> generateNodeState :: GenState -> Int -> IO GenState
+> generateNodeState st n = do
+>   b <- randomFlag $ P.mortality (profile st)
+>   if not b then
+>       return $ st { livingNodes=n `St.insert` (livingNodes st) }
+>   else
+>       return st
 
 To discover if a Node is valid:
     - check that it is a Version
@@ -194,8 +223,7 @@ Then collect these together
 > validNodes :: GenState -> [Int]
 > validNodes st = filter (checkNode st) ixs
 >   where
->       d = dug st
->       vs = versions d
+>       vs = livingNodes st
 >       ixs = [0 .. (length vs) - 1]
 
 This deflation algorithm has many problems:
@@ -217,7 +245,7 @@ This deflation algorithm has many problems:
 > generate :: S.Signature -> P.Profile -> IO GenDug
 > generate s p = do
 >    k <- randomRIO (5, 50)
->    let emptyState = GenState emptyDug s p ([], []) ([], [])
+>    let emptyState = GenState emptyDug s p St.empty St.empty St.empty St.empty St.empty
 >    st <- build emptyState k
 >    st' <- flatten st
 >    return $ dug st'
@@ -260,4 +288,7 @@ To interact with other components of Rufous, the DUGs here must be transformed i
 >       op2Args i = (i, map dugArg2Arg (op2DArgs i))
 >       os = M.fromList [op2Args i | i <- [0 .. (length vs) - 1]]
 
+To update the `GenState` objects:
 
+> withVersions :: GenState -> [Node] -> GenState
+> withVersions st vs = st { dug=(dug st) { versions=vs } }

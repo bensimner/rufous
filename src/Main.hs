@@ -22,6 +22,7 @@ p =
         , P.observerWeights = fromList []
         , P.persistentMutationWeight = 0.5
         , P.persistentObservationWeight = 0.5
+        , P.mortality = 0.3
         }
 
 gen = G.genDug2DUG <$> G.generate s p >>= D.dug2dot
