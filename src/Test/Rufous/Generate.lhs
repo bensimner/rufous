@@ -1,6 +1,7 @@
 > module Test.Rufous.Generate where
 > import Control.Monad
 > import System.Random
+> import Data.List
 >
 > import qualified Data.Map as M
 > import qualified Data.Set as St
@@ -68,6 +69,7 @@ Instead associated information is stored in a state object that gets passed arou
 >       , observerInfants :: St.Set Int
 >       , observerPersistents :: St.Set Int
 >       }
+>           
 
 The Arguments of a DUG are either arcs between Version's on the DUG or a hard-coded non-version argument
 For simplicity we assume all non-version arguments are integers for now.
@@ -138,19 +140,18 @@ The deflation step is the complex one, and the current (simple) alogorithm is as
 
 > tryDeflate :: GenState -> IO GenState
 > tryDeflate state = do
->    let state' = state { dug=d { operations=[] } }
->    deflate (operations d) state'
+>    let state' = state `withOperations` []
+>    deflate (operations (dug state)) state'
 >    where
->       d = dug state
 >       deflate :: [BufferedOperation] -> GenState -> IO GenState
 >       deflate (op : ops) st = do
 >          (op', st') <- tryCommitOp op st
 >          st'' <- deflate ops st'
->          let d' = dug st''
->          let ops' = operations d'
+>          let d'' = dug st''
+>          let ops'' = operations d''
 >          case op' of
->             Just op'' -> return $ st'' { dug=d' { operations=op'' : ops' } }
->             Nothing   -> return $ st'' { dug=d' { operations=ops' } }
+>             Just op'' -> return $ st'' `withOperations` (op'' : ops'')
+>             Nothing   -> return $ st'' `withOperations` ops''
 >       deflate [] st = return st
 
 Given a buffered operation, it can attempt to be committed to the DUG
@@ -163,64 +164,56 @@ Given a buffered operation, it can attempt to be committed to the DUG
 
 > tryCommitOp :: BufferedOperation -> GenState -> IO (Maybe BufferedOperation, GenState)
 > tryCommitOp bOp st = do
->    (args, rem) <- go (remaining bOp)
+>    (args, rem, st') <- go (remaining bOp) st
 >    let newArgs = bufArgs bOp ++ args
 >    if null rem then do
 >       let versNode = (bufOp bOp, newArgs)
->       st' <- generateNewState bOp st versNode
->       return (Nothing, st')
+>       st'' <- generateNewState bOp st' versNode
+>       return (Nothing, st'')
 >    else do
 >       let bufOp' = BufferedOperation (bufOp bOp) (bufArgs bOp ++ args) (rem) (persistent bOp)
->       return (Just bufOp', st)
+>       return (Just bufOp', st')
 >    where
->       go :: [S.Arg] -> IO ([DUGArg], [S.Arg])
->       go (a : as) = do
->          maybeArg <- tryCommitArg bOp a st
->          (args, rem) <- go as
+>       go :: [S.Arg] -> GenState -> IO ([DUGArg], [S.Arg], GenState)
+>       go (a : as) st = do
+>          (maybeArg, st') <- tryCommitArg bOp a st
+>          (args, rem, st'') <- go as st'
 >          case maybeArg of
->             Just dArg -> return (dArg : args, rem)
->             Nothing   -> return (args, a : rem)
->       go [] = return ([], [])
+>             Just dArg -> return (dArg : args, rem, st'')
+>             Nothing   -> return (args, a : rem, st'')
+>       go [] st = return ([], [], st)
 > 
-> tryCommitArg :: BufferedOperation -> S.Arg -> GenState -> IO (Maybe DUGArg)
+> tryCommitArg :: BufferedOperation -> S.Arg -> GenState -> IO (Maybe DUGArg, GenState)
 > tryCommitArg bOp a st =
 >    case a of
 >       S.NonVersion -> do
 >           r <- chooseNonVersion
->           return $ Just (NonVersion r)
+>           return (Just (NonVersion r), st)
 >       S.Version -> do
 >           let valid = validNodes bOp st
->           if not . null $ valid then do  -- todo: prune observations and invalid operations
+>           if not . St.null $ valid then do  -- todo: prune invalid operations
 >               v <- chooseUniform valid
->               return $ Just (Version v)
+>               let st' = updateNodeState bOp st v
+>               return (Just (Version v), st')
 >           else
->               return Nothing
+>               return (Nothing, st)
 > 
 > generateNewState :: BufferedOperation -> GenState -> Node -> IO GenState
 > generateNewState bOp st n = do
 >   let vs = versions (dug st)
 >   let ix = length vs
->   st' <- generateNodeState st ix           -- write state for current node
+>   st' <- generateNodeState st ix              -- write state for current node
 >   let st'' = st' `withVersions` (vs ++ [n])   -- add that node to the available versions
->   let st''' = updateNodes (S.opType $ S.sig $ bufOp bOp) st (bufArgs bOp)
 >   return st''
 > 
-> updateNodes :: S.OperationType -> GenState -> [DUGArg] -> GenState
-> updateNodes opType st (a : args) = 
->       case a of 
->           Version i -> 
->               let st' = updateNodeState opType st i in
->               updateNodes opType st' args
->           NonVersion _ -> 
->               updateNodes opType st args
-> updateNodes _ st [] = st
->       
-> updateNodeState :: S.OperationType -> GenState -> Int -> GenState
-> updateNodeState opType st v =
->   case opType of
->       S.Generator -> st
->       S.Mutator -> st `withoutMutatorInfant` v
->       S.Observer -> st `withoutObserverInfant` v
+> updateNodeState :: BufferedOperation -> GenState -> Int -> GenState
+> updateNodeState bOp st v =
+>   case (persistent bOp, S.opType $ S.sig $ bufOp bOp) of
+>       (_, S.Generator) -> st
+>       (False, S.Mutator) -> st `withoutMutatorInfant` v
+>       (False, S.Observer) -> st `withoutObserverInfant` v
+>       (True, S.Mutator) -> (st `withoutMutatorInfant` v) `withMutatorPersistent` v
+>       (True, S.Observer) -> (st `withoutObserverInfant` v) `withObserverPersistent` v
 >       
 > -- generates the node state of Living/Dead
 > generateNodeState :: GenState -> Int -> IO GenState
@@ -249,8 +242,8 @@ To discover if a Node is valid:
 
 Then collect these together
 
-> validNodes :: BufferedOperation -> GenState -> [Int]
-> validNodes bOp st = filter (checkNode st) ixs
+> validNodes :: BufferedOperation -> GenState -> St.Set Int
+> validNodes bOp st = St.filter (checkNode st) vs
 >   where
 >       vs = livingNodes st `St.intersection` bucket
 >       bucket =
@@ -259,7 +252,6 @@ Then collect these together
 >               (S.Mutator, False) -> mutatorInfants st
 >               (S.Observer, True) -> observerInfants st `St.union` observerPersistents st
 >               (S.Observer, False) -> observerInfants st
->       ixs = [0 .. (length vs) - 1]
 
 This deflation algorithm has many problems:
     1. Model state and pre-conditions
@@ -279,7 +271,7 @@ This deflation algorithm has many problems:
 
 > generate :: S.Signature -> P.Profile -> IO GenDug
 > generate s p = do
->    k <- randomRIO (5, 50)
+>    k <- randomRIO (10, 20)
 >    let emptyState = GenState emptyDug s p St.empty St.empty St.empty St.empty St.empty
 >    st <- build emptyState k
 >    st' <- flatten st
@@ -314,7 +306,7 @@ To interact with other components of Rufous, the DUGs here must be transformed i
 >       }
 >   where
 >       gdVersions = versions gd
->       vs = map (S.opName . fst) gdVersions
+>       vs = ["(" ++ show i ++ ")" ++ S.opName o | (i, (o, _)) <- enumerate gdVersions]
 >       dugArg2Arg da = 
 >           case da of
 >               Version i    -> D.VersionNodeArg i
@@ -327,6 +319,7 @@ To update the `GenState` objects:
 
 > withVersions :: GenState -> [Node] -> GenState
 > withVersions st vs = st { dug=(dug st) { versions=vs } }
+> withOperations st os = st { dug=(dug st) { operations=os } }
 > withoutMutatorInfant :: GenState -> Int -> GenState
 > withoutMutatorInfant st v = st { mutatorInfants=v `St.delete` (mutatorInfants st) }
 > withoutObserverInfant st v = st { observerInfants=v `St.delete` (observerInfants st) }

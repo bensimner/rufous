@@ -4,6 +4,8 @@
 > import Data.Maybe
 > import Data.List
 > import System.Process
+> 
+> import Test.Rufous.RndUtil
 
 Each node in the DUG is just the string of the operation name
 
@@ -65,8 +67,3 @@ This representation allows easy displaying, such as a graphviz file
 >       args2defn [] vs = vs
 >       (lambdaArgs, bodyArgs) = args2defn args ([], [])
 >       prefix = if null lambdaArgs then "" else "\\\\" ++ intercalate " " lambdaArgs ++ " -> "
-
-Utility functions:
-
-> enumerate :: [a] -> [(Int, a)]
-> enumerate xs = zip [0..] xs

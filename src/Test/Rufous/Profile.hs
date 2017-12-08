@@ -1,5 +1,7 @@
 module Test.Rufous.Profile where
 
+import Data.List
+
 import qualified Data.Map as M
 
 type ProfileEntry = M.Map String Float
