@@ -21,17 +21,17 @@ The representation for a DUG during generation is simply a pair:
 
 This implementation chooses to use a lists for the sets of nodes/operations
 
-> data GenDug =
+> data GenDug st =
 >    GenDug
->       { versions :: [Node]         -- the DUG built so far
->       , operations :: [BufferedOperation] -- operations yet to add
+>       { versions :: [Node st]                 -- the DUG built so far
+>       , operations :: [BufferedOperation st]  -- operations yet to add
 >       }
 >       deriving (Eq, Show)
 
 Whilst the Node's are primarily used for choosing Version arguments, they may be the result of an Observation,
 and so do not represent an actual version of the data structure.
 
-> type Node = (S.Operation, [DUGArg])
+> type Node st = (S.Operation st, [DUGArg])
 
 Generation State 
 ----------------
@@ -58,10 +58,10 @@ A version could also be `Visible' through an observation or `Hidden' with no obs
 This information is carried along during generation, and is computable from the DUG, but isn't directly stored in the DUG
 Instead associated information is stored in a state object that gets passed around:
 
-> data GenState = 
+> data GenState st = 
 >   GenState
->       { dug :: GenDug
->       , sig :: S.Signature
+>       { dug :: GenDug st
+>       , sig :: S.Signature st
 >       , profile :: P.Profile
 >       , livingNodes :: St.Set Int
 >       , mutatorInfants :: St.Set Int
@@ -81,9 +81,9 @@ Operations still to be committed are /buffered/
 A Buffered operation consists of the name of the operation, the partially committed arguments, the set of remaining argument types (Version | NonVersion)
     and whether the committed operation should be a persistent application or not
 
-> data BufferedOperation =
+> data BufferedOperation st =
 >    BufferedOperation
->       { bufOp     :: S.Operation
+>       { bufOp     :: S.Operation st
 >       , bufArgs   :: [DUGArg]
 >       , remaining :: [S.Arg]
 >       , persistent :: Bool
@@ -107,10 +107,10 @@ This is achieved by picking each operation with probability of their weights:
         then the final DUG with n operations would have roughly n/2 `a' operations, n/6 `b' operations and n/3 `c' operations
     - Capture persistence/mortality must be done at the deflation stage.
 
-> emptyDug :: GenDug
+> emptyDug :: GenDug st
 > emptyDug = GenDug [] []
 > 
-> inflateDug :: GenState -> IO GenState
+> inflateDug :: GenState st -> IO (GenState st)
 > inflateDug st = do
 >    let p = profile st
 >    let typeWeights = [ (inflateDug_Operation (P.normaliseWeights $ P.mutatorWeights p) (P.persistentMutationWeight p) st, P.pMutator p)
@@ -118,7 +118,7 @@ This is achieved by picking each operation with probability of their weights:
 >                      , (inflateDug_Operation (P.normaliseWeights $ P.generatorWeights p) 0.0 st, P.pGenerator p) ]
 >    join $ chooseRandom typeWeights
 >
-> inflateDug_Operation :: P.ProfileEntry -> Float -> GenState -> IO GenState
+> inflateDug_Operation :: P.ProfileEntry -> Float -> GenState st -> IO (GenState st)
 > inflateDug_Operation m p st = do
 >    opName <- chooseOperation m
 >    let op = S.operations (sig st) M.! opName
@@ -138,12 +138,12 @@ The deflation step is the complex one, and the current (simple) alogorithm is as
             - If all arguments get committed (and `remaining == []`) then commit the whole operation and remove it from the buffer
     - Compute the deflate function to a fixed point
 
-> tryDeflate :: GenState -> IO GenState
+> tryDeflate :: GenState st -> IO (GenState st)
 > tryDeflate state = do
 >    let state' = state `withOperations` []
 >    deflate (operations (dug state)) state'
 >    where
->       deflate :: [BufferedOperation] -> GenState -> IO GenState
+>       deflate :: [BufferedOperation st] -> GenState st -> IO (GenState st)
 >       deflate (op : ops) st = do
 >          (op', st') <- tryCommitOp op st
 >          st'' <- deflate ops st'
@@ -162,7 +162,7 @@ Given a buffered operation, it can attempt to be committed to the DUG
         - Commit those that can be
         - And return the partially applied operation to the buffer
 
-> tryCommitOp :: BufferedOperation -> GenState -> IO (Maybe BufferedOperation, GenState)
+> tryCommitOp :: BufferedOperation st -> GenState st -> IO (Maybe (BufferedOperation st), GenState st)
 > tryCommitOp bOp st = do
 >    (args, rem, st') <- go (remaining bOp) st
 >    let newArgs = bufArgs bOp ++ args
@@ -174,7 +174,6 @@ Given a buffered operation, it can attempt to be committed to the DUG
 >       let bufOp' = BufferedOperation (bufOp bOp) (bufArgs bOp ++ args) (rem) (persistent bOp)
 >       return (Just bufOp', st')
 >    where
->       go :: [S.Arg] -> GenState -> IO ([DUGArg], [S.Arg], GenState)
 >       go (a : as) st = do
 >          (maybeArg, st') <- tryCommitArg bOp a st
 >          case maybeArg of
@@ -184,7 +183,7 @@ Given a buffered operation, it can attempt to be committed to the DUG
 >             Nothing   -> return ([], a : as, st')
 >       go [] st = return ([], [], st)
 > 
-> tryCommitArg :: BufferedOperation -> S.Arg -> GenState -> IO (Maybe DUGArg, GenState)
+> tryCommitArg :: BufferedOperation st -> S.Arg -> GenState st -> IO (Maybe DUGArg, GenState st)
 > tryCommitArg bOp a st =
 >    case a of
 >       S.NonVersion -> do
@@ -199,7 +198,7 @@ Given a buffered operation, it can attempt to be committed to the DUG
 >           else
 >               return (Nothing, st)
 > 
-> generateNewState :: BufferedOperation -> GenState -> Node -> IO GenState
+> generateNewState :: BufferedOperation st -> GenState st -> Node st -> IO (GenState st)
 > generateNewState bOp st n = do
 >   let vs = versions (dug st)
 >   let ix = length vs
@@ -207,7 +206,7 @@ Given a buffered operation, it can attempt to be committed to the DUG
 >   let st'' = st' `withVersions` (vs ++ [n])   -- add that node to the available versions
 >   return st''
 > 
-> updateNodeState :: BufferedOperation -> GenState -> Int -> GenState
+> updateNodeState :: BufferedOperation st -> GenState st -> Int -> GenState st
 > updateNodeState bOp st v =
 >   case (persistent bOp, S.opType $ S.sig $ bufOp bOp) of
 >       (_, S.Generator) -> st
@@ -217,7 +216,7 @@ Given a buffered operation, it can attempt to be committed to the DUG
 >       (True, S.Observer) -> (st `withoutObserverInfant` v) `withObserverPersistent` v
 >       
 > -- generates the node state of Living/Dead
-> generateNodeState :: GenState -> Int -> IO GenState
+> generateNodeState :: GenState st -> Int -> IO (GenState st)
 > generateNodeState st n = do
 >   b <- randomFlag $ P.mortality (profile st)
 >   if not b then
@@ -233,7 +232,7 @@ To discover if a Node is valid:
     - check that it is a Version
     - check that it comes from the correct bin
 
-> checkNode :: GenState -> Int -> Bool
+> checkNode :: GenState st -> Int -> Bool
 > checkNode st ix = t /= S.Observer
 >   where
 >       d = dug st
@@ -243,7 +242,7 @@ To discover if a Node is valid:
 
 Then collect these together
 
-> validNodes :: BufferedOperation -> GenState -> St.Set Int
+> validNodes :: BufferedOperation st -> GenState st -> St.Set Int
 > validNodes bOp st = St.filter (checkNode st) vs
 >   where
 >       vs = livingNodes st `St.intersection` bucket
@@ -270,7 +269,7 @@ This deflation algorithm has many problems:
         Currently for simplicity we assume all non-version arguments are Int
         Obviously in the real world this isn't true, the hard part is choosing a representation that allows that type to fluctuate (heterogenous lists?)
 
-> generate :: S.Signature -> P.Profile -> (Int, Int) -> IO GenDug
+> generate :: S.Signature st -> P.Profile -> (Int, Int) -> IO (GenDug st)
 > generate s p sz = do
 >    k <- randomRIO sz
 >    let emptyState = GenState emptyDug s p St.empty St.empty St.empty St.empty St.empty
@@ -278,14 +277,14 @@ This deflation algorithm has many problems:
 >    st' <- flatten st
 >    return $ dug st'
 >    where
->       build :: GenState -> Int -> IO GenState  -- I do not know why I need this?
+>       build :: GenState st -> Int -> IO (GenState st)  -- I do not know why I need this?
 >       build st 0 = return st
 >       build st k = do
 >          st' <- inflateDug st
 >          build st' (k - 1)
 >
 >       -- now run tryDeflate until fixed point is hit
->       flatten :: GenState -> IO GenState
+>       flatten :: GenState st -> IO (GenState st)
 >       flatten st = do
 >          st' <- tryDeflate st
 >          if dug st == dug st' then
@@ -299,7 +298,7 @@ Conversion and interaction
 
 To interact with other components of Rufous, the DUGs here must be transformed into something more graph-like.
 
-> genDug2DUG :: GenDug -> D.DUG
+> genDug2DUG :: GenDug st -> D.DUG
 > genDug2DUG gd =
 >   D.DUG
 >       { D.versions=vs
@@ -318,10 +317,10 @@ To interact with other components of Rufous, the DUGs here must be transformed i
 
 To update the `GenState` objects:
 
-> withVersions :: GenState -> [Node] -> GenState
+> withVersions :: GenState st -> [Node st] -> GenState st
 > withVersions st vs = st { dug=(dug st) { versions=vs } }
 > withOperations st os = st { dug=(dug st) { operations=os } }
-> withoutMutatorInfant :: GenState -> Int -> GenState
+> withoutMutatorInfant :: GenState st -> Int -> GenState st
 > withoutMutatorInfant st v = st { mutatorInfants=v `St.delete` (mutatorInfants st) }
 > withoutObserverInfant st v = st { observerInfants=v `St.delete` (observerInfants st) }
 > withMutatorPersistent st v = st { mutatorPersistents=v `St.insert` (mutatorPersistents st) }

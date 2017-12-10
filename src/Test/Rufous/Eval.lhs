@@ -128,13 +128,13 @@ To fill this template in, we need:
 >               D.NonVersionArg i -> show i
 > 
 > -- this generates the signature for the generators that are used
-> generateDUGSignature :: S.Signature -> D.DUG -> String -> String
+> generateDUGSignature :: S.Signature st -> D.DUG -> String -> String
 > generateDUGSignature s d tyName = unlines (map line vs)
 >   where
 >       vs = filter (\(_, v) -> S.isType s S.Generator v) (names d)
 >       line (name, _) = name ++ " :: " ++ tyName ++ " Int"
 
-> generateADTImpl :: S.Signature -> S.Implementation -> String
+> generateADTImpl :: S.Signature st -> S.Implementation -> String
 > generateADTImpl s (_, code) = unlines $ map line ops
 >   where
 >       ops = M.elems $ S.operations s
@@ -147,21 +147,21 @@ To fill this template in, we need:
 >   where
 >       indentLine xs = "   " ++ xs
 > 
-> observers :: S.Signature -> D.DUG -> String
+> observers :: S.Signature st -> D.DUG -> String
 > observers s d = intercalate ", " obs
 >   where
 >       vs = names d
 >       obsNames = map S.opName (S.observers s)
 >       obs = map fst $ filter (\(_, v) -> v `elem` obsNames) vs
 >
-> mutators :: S.Signature -> D.DUG -> String
+> mutators :: S.Signature st -> D.DUG -> String
 > mutators s d = intercalate ", " muts
 >   where
 >       vs = names d
 >       mutNames = map S.opName (S.mutators s)
 >       muts = map fst $ filter (\(_, v) -> v `elem` mutNames) vs
 > 
-> generateDUGFile :: S.Signature -> D.DUG -> S.Implementation -> String -> String
+> generateDUGFile :: S.Signature st -> D.DUG -> S.Implementation -> String -> String
 > generateDUGFile s d (impl@(tyName, code)) outFileName = 
 >   fillTemplate 
 >       (S.nameFromType tyName)       
@@ -179,7 +179,7 @@ To fill this template in, we need:
 > instance FromJSON TimingResult where
 >    parseJSON (Object v) = TimingResult <$> v .: (Str.fromString "result") <*> v.: (Str.fromString "time")
 > 
-> writeDUGFile :: S.Signature -> D.DUG -> S.Implementation -> IO (String, String)
+> writeDUGFile :: S.Signature st -> D.DUG -> S.Implementation -> IO (String, String)
 > writeDUGFile s d (impl@(tyName, _)) = do
 >   let fileName = "dugs/" ++ (S.nameFromType tyName) ++ "_input.hs"
 >   let outputFileName = "dugs/" ++ (S.nameFromType tyName) ++ "_output.hs"
@@ -195,7 +195,7 @@ To fill this template in, we need:
 >       Nothing -> return $ Left $ "Failed to load: " ++ f
 >   
 > 
-> runDUG :: S.Signature -> D.DUG -> S.Implementation -> IO (Either String TimingResult)
+> runDUG :: S.Signature st -> D.DUG -> S.Implementation -> IO (Either String TimingResult)
 > runDUG s d impl = do
 >   (fileName, outFileName) <- writeDUGFile s d impl
 >   (_, _, Just herr, ph) <- createProcess (proc "runhaskell" [fileName]) {std_err = CreatePipe}
