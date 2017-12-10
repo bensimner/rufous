@@ -3,8 +3,10 @@
 >    , Arg(..)
 >    , OperationSig(..)
 >    , parseSig
+>    , sig2str
 >    ) where
 > 
+> import Data.List (intercalate)
 > import Text.Parsec (Parsec, parse, many, string, space, char, sepBy, eof)
 > import Control.Applicative ((<*), (*>), (<|>))
 
@@ -41,6 +43,14 @@ Hence an operation's signature is simply a pair, the function signature and its 
 >       , retTy :: Arg
 >       }
 >    deriving (Eq, Show)
+> 
+> sig2str :: OperationSig -> String
+> sig2str s = intercalate " -> " $ [arg2str a | a <- opArgs s] ++ [arg2str $ retTy s]
+> arg2str :: Arg -> String
+> arg2str a =
+>   case a of
+>       Version -> "t a"
+>       NonVersion -> "a"
 
 These signatures are built by a simple parser with the grammar:
     <sig> ::= <arg> | <arg> "->" <sig>

@@ -177,10 +177,11 @@ Given a buffered operation, it can attempt to be committed to the DUG
 >       go :: [S.Arg] -> GenState -> IO ([DUGArg], [S.Arg], GenState)
 >       go (a : as) st = do
 >          (maybeArg, st') <- tryCommitArg bOp a st
->          (args, rem, st'') <- go as st'
 >          case maybeArg of
->             Just dArg -> return (dArg : args, rem, st'')
->             Nothing   -> return (args, a : rem, st'')
+>             Just dArg -> do
+>               (args, rem, st'') <- go as st'
+>               return (dArg : args, rem, st'')
+>             Nothing   -> return ([], a : as, st')
 >       go [] st = return ([], [], st)
 > 
 > tryCommitArg :: BufferedOperation -> S.Arg -> GenState -> IO (Maybe DUGArg, GenState)
@@ -269,9 +270,9 @@ This deflation algorithm has many problems:
         Currently for simplicity we assume all non-version arguments are Int
         Obviously in the real world this isn't true, the hard part is choosing a representation that allows that type to fluctuate (heterogenous lists?)
 
-> generate :: S.Signature -> P.Profile -> IO GenDug
-> generate s p = do
->    k <- randomRIO (10, 20)
+> generate :: S.Signature -> P.Profile -> (Int, Int) -> IO GenDug
+> generate s p sz = do
+>    k <- randomRIO sz
 >    let emptyState = GenState emptyDug s p St.empty St.empty St.empty St.empty St.empty
 >    st <- build emptyState k
 >    st' <- flatten st
@@ -306,7 +307,7 @@ To interact with other components of Rufous, the DUGs here must be transformed i
 >       }
 >   where
 >       gdVersions = versions gd
->       vs = ["(" ++ show i ++ ")" ++ S.opName o | (i, (o, _)) <- enumerate gdVersions]
+>       vs = [S.opName o | (i, (o, _)) <- enumerate gdVersions]
 >       dugArg2Arg da = 
 >           case da of
 >               Version i    -> D.VersionNodeArg i
