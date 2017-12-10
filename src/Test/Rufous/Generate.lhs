@@ -31,7 +31,16 @@ This implementation chooses to use a lists for the sets of nodes/operations
 Whilst the Node's are primarily used for choosing Version arguments, they may be the result of an Observation,
 and so do not represent an actual version of the data structure.
 
-> type Node st = (S.Operation st, [DUGArg])
+> data Node st = 
+>   Node 
+>       { nodeOperation :: (S.Operation st) 
+>       , nodeArgs :: [DUGArg] 
+>       , nodeStates :: [st]
+>       }
+> instance Eq (Node st) where
+>   (Node a b _) == (Node a' b' _)    = (a == a') && (b == b')
+> instance Show (Node st) where
+>   show (Node a b _) = "(" ++ show a ++ ". " ++ show b ++ ")"
 
 Generation State 
 ----------------
@@ -69,7 +78,6 @@ Instead associated information is stored in a state object that gets passed arou
 >       , observerInfants :: St.Set Int
 >       , observerPersistents :: St.Set Int
 >       }
->           
 
 The Arguments of a DUG are either arcs between Version's on the DUG or a hard-coded non-version argument
 For simplicity we assume all non-version arguments are integers for now.
@@ -167,7 +175,7 @@ Given a buffered operation, it can attempt to be committed to the DUG
 >    (args, rem, st') <- go (remaining bOp) st
 >    let newArgs = bufArgs bOp ++ args
 >    if null rem then do
->       let versNode = (bufOp bOp, newArgs)
+>       let versNode = Node (bufOp bOp) newArgs (error "TODO: state")
 >       st'' <- generateNewState bOp st' versNode
 >       return (Nothing, st'')
 >    else do
@@ -237,8 +245,8 @@ To discover if a Node is valid:
 >   where
 >       d = dug st
 >       vs = versions d
->       (op, _) = vs !! ix
->       t = S.opType $ S.sig op
+>       n = vs !! ix
+>       t = S.opType $ S.sig $ nodeOperation n
 
 Then collect these together
 
@@ -306,12 +314,12 @@ To interact with other components of Rufous, the DUGs here must be transformed i
 >       }
 >   where
 >       gdVersions = versions gd
->       vs = [S.opName o | (i, (o, _)) <- enumerate gdVersions]
+>       vs = [S.opName (nodeOperation n) | n <- gdVersions]
 >       dugArg2Arg da = 
 >           case da of
 >               Version i    -> D.VersionNodeArg i
 >               NonVersion i -> D.NonVersionArg i
->       op2DArgs i = snd $ gdVersions !! i
+>       op2DArgs i = nodeArgs $ gdVersions !! i
 >       op2Args i = (i, map dugArg2Arg (op2DArgs i))
 >       os = M.fromList [op2Args i | i <- [0 .. (length vs) - 1]]
 
