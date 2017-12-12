@@ -2,7 +2,6 @@
 > import Control.Monad
 > import System.Random
 > import Data.List
-> import Debug.Trace
 >
 > import qualified Data.Map as M
 > import qualified Data.Set as St
@@ -209,8 +208,8 @@ Given a buffered operation, it can attempt to be committed to the DUG
 > generateNewState bOp st n = do
 >   let vs = versions (dug st)
 >   let ix = length vs
->   st' <- generateNodeState st ix              -- write state for current node
->   let st'' = st' `withVersions` (vs ++ [n])   -- add that node to the available versions
+>   st' <- generateNodeState bOp st ix              -- write state for current node
+>   let st'' = st' `withVersions` (vs ++ [n])       -- add that node to the available versions
 >   return st''
 > 
 > updateNodeState :: BufferedOperation st -> GenState st -> Int -> GenState st
@@ -223,15 +222,18 @@ Given a buffered operation, it can attempt to be committed to the DUG
 >       (True, S.Observer) -> (st `withoutObserverInfant` v) `withObserverPersistent` v
 >       
 > -- generates the node state of Living/Dead
-> generateNodeState :: GenState st -> Int -> IO (GenState st)
-> generateNodeState st n = do
+> generateNodeState :: BufferedOperation st -> GenState st -> Int -> IO (GenState st)
+> generateNodeState bOp st n = do
 >   b <- randomFlag $ P.mortality (profile st)
 >   if not b then
->       return $ st 
->           { livingNodes=n `St.insert` (livingNodes st)
->           , mutatorInfants=n `St.insert` (mutatorInfants st)
->           , observerInfants=n `St.insert` (observerInfants st)
->           }
+>       if S.Observer == (S.opType $ S.sig $ bufOp bOp) then
+>           return $ st { livingNodes=n `St.insert` (livingNodes st) }
+>       else
+>           return $ st 
+>               { livingNodes=n `St.insert` (livingNodes st)
+>               , mutatorInfants=n `St.insert` (mutatorInfants st)
+>               , observerInfants=n `St.insert` (observerInfants st)
+>               }
 >   else
 >       return st
 
@@ -242,18 +244,20 @@ To manage the FSM during operation:
 >
 > checkPre :: GenState st -> BufferedOperation st -> [DUGArg] -> Bool
 > checkPre st bOp args =
->       if null args then
+>       if null opargs then
 >           True
 >       else
->           any (S.pre (bufOp bOp)) stateargs
+>           any (S.pre (bufOp bOp)) opargs
 >   where
->       stateargs = prods $ map dugarg2stateargs args
+>       --stateargs :: [[S.OpArg st]]
+>       opargs = prods $ map dugarg2stateargs args
+>       --dugarg2stateargs :: DUGArg -> [S.OpArg st]
 >       dugarg2stateargs a = 
 >           case a of
 >               Version i -> S.VersionArg <$> nodeStates (versions (dug st) !! i)
 >               NonVersion k -> [S.IntArg k]
 >       prods (xs : xss) = [x : xss' | x <- xs, xss' <- prods xss]
->       prods [] = []
+>       prods [] = [[]]
 
 To collect valid nodes, pick one randomly from the correct "bin" of nodes
 
@@ -310,7 +314,7 @@ Conversion and interaction
 
 To interact with other components of Rufous, the DUGs here must be transformed into something more graph-like.
 
-> genDug2DUG :: GenDug st -> D.DUG
+> genDug2DUG :: GenDug st -> D.DUG st
 > genDug2DUG gd =
 >   D.DUG
 >       { D.versions=vs
@@ -318,7 +322,7 @@ To interact with other components of Rufous, the DUGs here must be transformed i
 >       }
 >   where
 >       gdVersions = versions gd
->       vs = [S.opName (nodeOperation n) | n <- gdVersions]
+>       vs = [(S.opName (nodeOperation n), nodeStates n, nodeOperation n) | n <- gdVersions]
 >       dugArg2Arg da = 
 >           case da of
 >               Version i    -> D.VersionNodeArg i

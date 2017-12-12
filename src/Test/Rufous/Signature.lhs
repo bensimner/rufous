@@ -86,7 +86,7 @@ We expose some builder functions that make it easy to construct these maps from 
 > implementation tyName ops = (tyName, M.fromList ops)
 > 
 > operation :: String -> String -> Operation st
-> operation name typeSig = Simple name (parseSig typeSig) (\ _ -> True) (\_ -> error $ "no transition function for " ++ name)
+> operation name typeSig = Simple name (parseSig typeSig) (const True) (\_ -> error $ "no transition function for " ++ name)
 >
 > filterType :: OperationType -> Signature st -> [Operation st]
 > filterType t s = filter ((== t) . opType . sig) (M.elems $ operations s)

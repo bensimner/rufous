@@ -111,15 +111,16 @@ To fill this template in, we need:
 > replace (s : ss) sub = s : replace ss sub
 > replace [] sub = error "replace :: could not find pattern"
 > 
-> names :: D.DUG -> [(String, D.VersionNode)]
+> names :: D.DUG st -> [(String,  D.VersionNode st)]
 > names d = [("v" ++ (show i), v) | (i, v) <- enumerate (D.versions d)]
 > 
-> generateDUGCode :: D.DUG -> String
+> generateDUGCode :: D.DUG st -> String
 > generateDUGCode d = unlines [line ix | ix <- [0 .. (length vs) - 1]]
 >   where
 >       vs = D.versions d
 >       ops = D.operations d
->       line ix = intercalate " " $ (name ix) : "=" : (vs !! ix) : args ix
+>       opname ix = let (_, _, o) = (vs !! ix) in S.opName o
+>       line ix = intercalate " " $ (name ix) : "=" : opname ix : args ix
 >       name ix = "v" ++ (show ix)
 >       args ix = map arg2str (ops M.! ix)
 >       arg2str a =
@@ -128,10 +129,10 @@ To fill this template in, we need:
 >               D.NonVersionArg i -> show i
 > 
 > -- this generates the signature for the generators that are used
-> generateDUGSignature :: S.Signature st -> D.DUG -> String -> String
+> generateDUGSignature :: S.Signature st -> D.DUG st -> String -> String
 > generateDUGSignature s d tyName = unlines (map line vs)
 >   where
->       vs = filter (\(_, v) -> S.isType s S.Generator v) (names d)
+>       vs = filter (\(_, (_, _, o)) -> S.isType s S.Generator (S.opName o)) (names d)
 >       line (name, _) = name ++ " :: " ++ tyName ++ " Int"
 >
 > generateADTImpl :: S.Signature st -> S.Implementation -> String
@@ -149,21 +150,21 @@ To fill this template in, we need:
 >   where
 >       indentLine xs = "   " ++ xs
 > 
-> observers :: S.Signature st -> D.DUG -> String
+> observers :: S.Signature st -> D.DUG st -> String
 > observers s d = intercalate ", " obs
 >   where
 >       vs = names d
 >       obsNames = map S.opName (S.observers s)
->       obs = map fst $ filter (\(_, v) -> v `elem` obsNames) vs
+>       obs = map fst $ filter (\(_, (_, _, o)) -> S.opName o `elem` obsNames) vs
 >
-> mutators :: S.Signature st -> D.DUG -> String
+> mutators :: S.Signature st -> D.DUG st -> String
 > mutators s d = intercalate ", " muts
 >   where
 >       vs = names d
 >       mutNames = map S.opName (S.mutators s)
->       muts = map fst $ filter (\(_, v) -> v `elem` mutNames) vs
+>       muts = map fst $ filter (\(_, (_, _, o)) -> S.opName o `elem` mutNames) vs
 > 
-> generateDUGFile :: S.Signature st -> D.DUG -> S.Implementation -> String -> String
+> generateDUGFile :: S.Signature st -> D.DUG st -> S.Implementation -> String -> String
 > generateDUGFile s d (impl@(tyName, code)) outFileName = 
 >   fillTemplate 
 >       (S.nameFromType tyName)       
@@ -175,13 +176,14 @@ To fill this template in, we need:
 >       (mutators s d)
 >       (outFileName)
 >
-> data TimingResult = TimingResult [Int] NominalDiffTime deriving (Show)
+> type TimingInfo   = NominalDiffTime
+> data TimingResult = TimingResult [Int] TimingInfo deriving (Show)
 > instance ToJSON TimingResult where
 >    toJSON (TimingResult r t) = object [(Str.fromString "time") .= toJSON t, (Str.fromString "result") .= toJSON r]
 > instance FromJSON TimingResult where
 >    parseJSON (Object v) = TimingResult <$> v .: (Str.fromString "result") <*> v.: (Str.fromString "time")
 > 
-> writeDUGFile :: S.Signature st -> D.DUG -> S.Implementation -> IO (String, String)
+> writeDUGFile :: S.Signature st -> D.DUG st -> S.Implementation -> IO (String, String)
 > writeDUGFile s d (impl@(tyName, _)) = do
 >   let fileName = "dugs/" ++ (S.nameFromType tyName) ++ "_input.hs"
 >   let outputFileName = "dugs/" ++ (S.nameFromType tyName) ++ "_output.hs"
@@ -197,7 +199,7 @@ To fill this template in, we need:
 >       Nothing -> return $ Left $ "Failed to load: " ++ f
 >   
 > 
-> runDUG :: S.Signature st -> D.DUG -> S.Implementation -> IO (Either String TimingResult)
+> runDUG :: S.Signature st -> D.DUG st -> S.Implementation -> IO (Either String TimingResult)
 > runDUG s d impl = do
 >   (fileName, outFileName) <- writeDUGFile s d impl
 >   (_, _, Just herr, ph) <- createProcess (proc "runhaskell" [fileName]) {std_err = CreatePipe}
@@ -205,3 +207,8 @@ To fill this template in, we need:
 >   case ec of
 >       ExitFailure _ -> Left <$> hGetContents herr
 >       ExitSuccess   -> readResults outFileName
+> 
+> validateDUG :: S.Signature st -> D.DUG st -> TimingResult -> Either String TimingInfo
+> validateDUG s d tr = undefined
+>   where
+>   obsStates = undefined
