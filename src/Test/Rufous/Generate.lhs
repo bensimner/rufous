@@ -241,7 +241,11 @@ To manage the FSM during operation:
 > createFSMState st bOp args = [S.initialState (sig st)]
 >
 > checkPre :: GenState st -> BufferedOperation st -> [DUGArg] -> Bool
-> checkPre st bOp args = any (S.pre (bufOp bOp)) stateargs
+> checkPre st bOp args =
+>       if null args then
+>           True
+>       else
+>           any (S.pre (bufOp bOp)) stateargs
 >   where
 >       stateargs = prods $ map dugarg2stateargs args
 >       dugarg2stateargs a = 
