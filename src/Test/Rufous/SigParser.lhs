@@ -44,13 +44,13 @@ Hence an operation's signature is simply a pair, the function signature and its 
 >       }
 >    deriving (Eq, Show)
 > 
-> sig2str :: OperationSig -> String
-> sig2str s = intercalate " -> " $ [arg2str a | a <- opArgs s] ++ [arg2str $ retTy s]
-> arg2str :: Arg -> String
-> arg2str a =
->   case a of
->       Version -> "t a"
->       NonVersion -> "a"
+> sig2str :: String -> String -> OperationSig -> String
+> sig2str t a s = intercalate " -> " $ [arg2str t a arg | arg <- opArgs s] ++ [arg2str t a $ retTy s]
+> arg2str :: String -> String -> Arg -> String
+> arg2str t a arg =
+>   case arg of
+>       Version -> t ++ " " ++ a
+>       NonVersion -> a
 
 These signatures are built by a simple parser with the grammar:
     <sig> ::= <arg> | <arg> "->" <sig>

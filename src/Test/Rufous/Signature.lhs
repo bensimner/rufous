@@ -31,8 +31,8 @@ An ADT is simply a collection of operations, tagged with a unqiue name.
 >    Signature
 >       { operations :: M.Map OperationName (Operation st)
 >       , implementations :: [Implementation]
+>       , initialState :: st
 >       }
->    deriving (Show)
 
 An operation of an ADT has a name, and a signature (see: SigParser.lhs)
 
@@ -40,8 +40,8 @@ An operation of an ADT has a name, and a signature (see: SigParser.lhs)
 >    Simple
 >       { opName     :: OperationName
 >       , sig        :: OperationSig
->       , pre        :: st -> Bool
->       , transition :: st -> [st]  -- unknown what outputs are, so list each possible output
+>       , pre        :: st -> Args st -> Bool
+>       , transition :: st -> Args st -> [st]
 >       }
 > instance Eq (Operation st) where
 >   o1 == o2 = (opName o1 == opName o2) && (sig o1 == sig o2)
@@ -68,16 +68,22 @@ Implementations of the ADT are simply a fully-qualified type name and text imple
 > nameFromType :: TypeName -> String
 > nameFromType ty = intercalate "" $ splitType ty
 
+To manage pre-conditions we define a non-deterministic (in)finite state machine,
+now each operation can be guarded by a pre-condition over states:
+
+> data Args st = VersionArg st | IntArg Int
+>   deriving (Eq, Show)
+
 We expose some builder functions that make it easy to construct these maps from basic tupled lists
 
 > signature :: String -> [Operation st] -> [Implementation] -> Signature st
-> signature name ops impls = Signature (M.fromList [(opName o, o) | o <- ops]) impls
+> signature name ops impls = Signature (M.fromList [(opName o, o) | o <- ops]) impls (error "signature :: unspecified initial state")
 > 
 > implementation :: TypeName -> [(OperationName, String)] -> Implementation
 > implementation tyName ops = (tyName, M.fromList ops)
 > 
 > operation :: String -> String -> Operation st
-> operation name typeSig = Simple name (parseSig typeSig) (const True) (\st -> [st])
+> operation name typeSig = Simple name (parseSig typeSig) (\ _ _ -> True) (\st _ -> [st])
 >
 > filterType :: OperationType -> Signature st -> [Operation st]
 > filterType t s = filter ((== t) . opType . sig) (M.elems $ operations s)

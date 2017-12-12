@@ -133,14 +133,16 @@ To fill this template in, we need:
 >   where
 >       vs = filter (\(_, v) -> S.isType s S.Generator v) (names d)
 >       line (name, _) = name ++ " :: " ++ tyName ++ " Int"
-
+>
 > generateADTImpl :: S.Signature st -> S.Implementation -> String
-> generateADTImpl s (_, code) = unlines $ map line ops
+> generateADTImpl s (tyName, code) = unlines $ map line ops
 >   where
 >       ops = M.elems $ S.operations s
 >       line o = 
 >           let name = S.opName o 
->           in name ++ " = " ++ (code M.! name)
+>           in unlines $ [ name ++ " :: " ++ S.sig2str tyName "Int" (S.sig o)
+>                        , name ++ " = " ++ (code M.! name)
+>                        ]
 > 
 > indent :: String -> String
 > indent = unlines . map indentLine . lines

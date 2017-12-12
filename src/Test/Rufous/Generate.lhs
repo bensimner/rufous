@@ -175,7 +175,7 @@ Given a buffered operation, it can attempt to be committed to the DUG
 >    (args, rem, st') <- go (remaining bOp) st
 >    let newArgs = bufArgs bOp ++ args
 >    if null rem then do
->       let versNode = Node (bufOp bOp) newArgs (error "TODO: state")
+>       let versNode = Node (bufOp bOp) newArgs (createFSMState st bOp newArgs)
 >       st'' <- generateNewState bOp st' versNode
 >       return (Nothing, st'')
 >    else do
@@ -239,6 +239,7 @@ Given a buffered operation, it can attempt to be committed to the DUG
 To discover if a Node is valid:
     - check that it is a Version
     - check that it comes from the correct bin
+    - finally check that its state is valid in the precondition of another.
 
 > checkNode :: GenState st -> Int -> Bool
 > checkNode st ix = t /= S.Observer
@@ -247,6 +248,11 @@ To discover if a Node is valid:
 >       vs = versions d
 >       n = vs !! ix
 >       t = S.opType $ S.sig $ nodeOperation n
+
+To manage the FSM during operation:
+
+> createFSMState :: GenState st -> BufferedOperation st -> [DUGArg] -> [st]
+> createFSMState st bOp args = [S.initialState (sig st)]
 
 Then collect these together
 
