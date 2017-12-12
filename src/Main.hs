@@ -41,7 +41,7 @@ showd = D.dug2dot d
 
 main :: IO ()
 main = do
-   gend <- G.generate s p (5, 10)
+   gend <- G.generate s p (1, 2)
    putStrLn "generated DUG"
    let d = G.genDug2DUG gend
    putStrLn " DUG converted"

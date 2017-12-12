@@ -17,6 +17,8 @@
 >    -- utilities
 >    , sig2str
 >    , Arg(..)
+>    , OpArgs(..)
+>    , OpArg(..)
 >    , OperationType(..)
 >    , OperationSig(..)
 >    ) where
@@ -40,8 +42,8 @@ An operation of an ADT has a name, and a signature (see: SigParser.lhs)
 >    Simple
 >       { opName     :: OperationName
 >       , sig        :: OperationSig
->       , pre        :: st -> Args st -> Bool
->       , transition :: st -> Args st -> [st]
+>       , pre        :: OpArgs st -> Bool
+>       , transition :: OpArgs st -> [st]
 >       }
 > instance Eq (Operation st) where
 >   o1 == o2 = (opName o1 == opName o2) && (sig o1 == sig o2)
@@ -71,7 +73,8 @@ Implementations of the ADT are simply a fully-qualified type name and text imple
 To manage pre-conditions we define a non-deterministic (in)finite state machine,
 now each operation can be guarded by a pre-condition over states:
 
-> data Args st = VersionArg st | IntArg Int
+> type OpArgs st = [OpArg st]
+> data OpArg st = VersionArg st | IntArg Int
 >   deriving (Eq, Show)
 
 We expose some builder functions that make it easy to construct these maps from basic tupled lists
@@ -83,7 +86,7 @@ We expose some builder functions that make it easy to construct these maps from 
 > implementation tyName ops = (tyName, M.fromList ops)
 > 
 > operation :: String -> String -> Operation st
-> operation name typeSig = Simple name (parseSig typeSig) (\ _ _ -> True) (\st _ -> [st])
+> operation name typeSig = Simple name (parseSig typeSig) (\ _ -> True) (\_ -> error $ "no transition function for " ++ name)
 >
 > filterType :: OperationType -> Signature st -> [Operation st]
 > filterType t s = filter ((== t) . opType . sig) (M.elems $ operations s)

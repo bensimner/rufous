@@ -2,6 +2,7 @@
 > import Control.Monad
 > import System.Random
 > import Data.List
+> import Debug.Trace
 >
 > import qualified Data.Map as M
 > import qualified Data.Set as St
@@ -163,25 +164,23 @@ The deflation step is the complex one, and the current (simple) alogorithm is as
 >       deflate [] st = return st
 
 Given a buffered operation, it can attempt to be committed to the DUG
-    - If each remaining Arg in the operation can be committed then:
-        - The operation can be removed from the buffer
-        - The result can be added to the list of nodes
-    - If not all of them can:
-        - Commit those that can be
-        - And return the partially applied operation to the buffer
 
 > tryCommitOp :: BufferedOperation st -> GenState st -> IO (Maybe (BufferedOperation st), GenState st)
 > tryCommitOp bOp st = do
 >    (args, rem, st') <- go (remaining bOp) st
 >    let newArgs = bufArgs bOp ++ args
 >    if null rem then do
->       let versNode = Node (bufOp bOp) newArgs (createFSMState st bOp newArgs)
->       st'' <- generateNewState bOp st' versNode
->       return (Nothing, st'')
+>       if checkPre st bOp newArgs then do
+>           let versNode = Node (bufOp bOp) newArgs (createFSMState st bOp newArgs)
+>           st'' <- generateNewState bOp st' versNode
+>           return (Nothing, st'')
+>       else do
+>           return (Just bOp, st')   -- put it back on the queue
 >    else do
 >       let bufOp' = BufferedOperation (bufOp bOp) (bufArgs bOp ++ args) (rem) (persistent bOp)
 >       return (Just bufOp', st')
 >    where
+>       -- try find a list of arguments that satisfy the precondition to bOp
 >       go (a : as) st = do
 >          (maybeArg, st') <- tryCommitArg bOp a st
 >          case maybeArg of
@@ -236,30 +235,27 @@ Given a buffered operation, it can attempt to be committed to the DUG
 >   else
 >       return st
 
-To discover if a Node is valid:
-    - check that it is a Version
-    - check that it comes from the correct bin
-    - finally check that its state is valid in the precondition of another.
-
-> checkNode :: GenState st -> Int -> Bool
-> checkNode st ix = t /= S.Observer
->   where
->       d = dug st
->       vs = versions d
->       n = vs !! ix
->       t = S.opType $ S.sig $ nodeOperation n
-
 To manage the FSM during operation:
 
 > createFSMState :: GenState st -> BufferedOperation st -> [DUGArg] -> [st]
 > createFSMState st bOp args = [S.initialState (sig st)]
+>
+> checkPre :: GenState st -> BufferedOperation st -> [DUGArg] -> Bool
+> checkPre st bOp args = any (S.pre (bufOp bOp)) stateargs
+>   where
+>       stateargs = prods $ map dugarg2stateargs args
+>       dugarg2stateargs a = 
+>           case a of
+>               Version i -> S.VersionArg <$> nodeStates (versions (dug st) !! i)
+>               NonVersion k -> [S.IntArg k]
+>       prods (xs : xss) = [x : xss' | x <- xs, xss' <- prods xss]
+>       prods [] = []
 
-Then collect these together
+To collect valid nodes, pick one randomly from the correct "bin" of nodes
 
 > validNodes :: BufferedOperation st -> GenState st -> St.Set Int
-> validNodes bOp st = St.filter (checkNode st) vs
+> validNodes bOp st = livingNodes st `St.intersection` bucket
 >   where
->       vs = livingNodes st `St.intersection` bucket
 >       bucket =
 >           case ((S.opType $ S.sig (bufOp bOp)), persistent bOp) of
 >               (S.Mutator, True) -> mutatorInfants st `St.union` mutatorPersistents st
@@ -269,16 +265,12 @@ Then collect these together
 
 This deflation algorithm has many problems:
     1. Model state and pre-conditions
-        Currently it assumes all operations are valid so long as the types match
-        To fix this it would be necessary to carry around a model of the version and perform pre-condition checks for each operation
-        which could be expensive if we allow the buffer to grow large.
+        To enable pre-conditions each node must carry around state and 
+        to check the pre-condition we must first generate a full set of parameters before checking.
 
-        Fix: bound the size of the buffer?
-    2. Choosing version arguments
-        Currently version arguments are chosen randomly, even if point 1) was satisifed there is an additional constraint of choosing
-        versions that already have been mutated for picking persistent operations
+        As the DUG grows this information will become unmanageable.
 
-        Fix: store whether each buffered operation is persistent, and whether each Node has already been mutated
+        Solution: Limit number of nodes that are available for future operations.
     3. Choosing non-version arguments
         Currently for simplicity we assume all non-version arguments are Int
         Obviously in the real world this isn't true, the hard part is choosing a representation that allows that type to fluctuate (heterogenous lists?)
@@ -301,7 +293,9 @@ This deflation algorithm has many problems:
 >       flatten :: GenState st -> IO (GenState st)
 >       flatten st = do
 >          st' <- tryDeflate st
->          if dug st == dug st' then
+>          let n = length $ versions $ dug st
+>          let n' = length $ versions $ dug st'
+>          if n == n' then
 >             return st'
 >          else
 >             flatten st'
