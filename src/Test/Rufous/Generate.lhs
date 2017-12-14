@@ -35,7 +35,7 @@ and so do not represent an actual version of the data structure.
 >   Node 
 >       { nodeOperation :: (S.Operation st) 
 >       , nodeArgs :: [DUGArg] 
->       , nodeStates :: [st]
+>       , nodeState :: st
 >       }
 > instance Eq (Node st) where
 >   (Node a b _) == (Node a' b' _)    = (a == a') && (b == b')
@@ -174,7 +174,7 @@ Given a buffered operation, it can attempt to be committed to the DUG
 >           st'' <- generateNewState bOp st' versNode
 >           return (Nothing, st'')
 >       else do
->           return (Just bOp, st')   -- put it back on the queue
+>           return (Just bOp, st)   -- put it back on the queue
 >    else do
 >       let bufOp' = BufferedOperation (bufOp bOp) (bufArgs bOp ++ args) (rem) (persistent bOp)
 >       return (Just bufOp', st')
@@ -186,7 +186,7 @@ Given a buffered operation, it can attempt to be committed to the DUG
 >             Just dArg -> do
 >               (args, rem, st'') <- go as st'
 >               return (dArg : args, rem, st'')
->             Nothing   -> return ([], a : as, st')
+>             Nothing   -> return ([], a : as, st)
 >       go [] st = return ([], [], st)
 > 
 > tryCommitArg :: BufferedOperation st -> S.Arg -> GenState st -> IO (Maybe DUGArg, GenState st)
@@ -239,25 +239,23 @@ Given a buffered operation, it can attempt to be committed to the DUG
 
 To manage the FSM during operation:
 
-> createFSMState :: GenState st -> BufferedOperation st -> [DUGArg] -> [st]
-> createFSMState st bOp args = [S.initialState (sig st)]
+> createFSMState :: GenState st -> BufferedOperation st -> [DUGArg] -> st
+> createFSMState st bOp args =
+>   case opType $ bufOp bOp of
+>       S.Generator -> S.initialState (sig st)
+>       S.Observer -> S.initialState (sig st)
+>       S.Mutator   -> S.transition (bufOp bOp) (dugArgs2OpArgs (dug st) args)
+>   where
+>       opType op = S.opType (S.sig op)
 >
 > checkPre :: GenState st -> BufferedOperation st -> [DUGArg] -> Bool
 > checkPre st bOp args =
 >       if null opargs then
 >           True
 >       else
->           any (S.pre (bufOp bOp)) opargs
+>           S.pre (bufOp bOp) opargs
 >   where
->       --stateargs :: [[S.OpArg st]]
->       opargs = prods $ map dugarg2stateargs args
->       --dugarg2stateargs :: DUGArg -> [S.OpArg st]
->       dugarg2stateargs a = 
->           case a of
->               Version i -> S.VersionArg <$> nodeStates (versions (dug st) !! i)
->               NonVersion k -> [S.IntArg k]
->       prods (xs : xss) = [x : xss' | x <- xs, xss' <- prods xss]
->       prods [] = [[]]
+>       opargs = dugArgs2OpArgs (dug st) args
 
 To collect valid nodes, pick one randomly from the correct "bin" of nodes
 
@@ -288,7 +286,7 @@ This deflation algorithm has many problems:
 >    k <- randomRIO sz
 >    let emptyState = GenState emptyDug s p St.empty St.empty St.empty St.empty St.empty
 >    st <- build emptyState k
->    st' <- flatten st
+>    st' <- flatten st 1000
 >    return $ dug st'
 >    where
 >       build :: GenState st -> Int -> IO (GenState st)  -- I do not know why I need this?
@@ -297,16 +295,19 @@ This deflation algorithm has many problems:
 >          st' <- inflateDug st
 >          build st' (k - 1)
 >
->       -- now run tryDeflate until fixed point is hit
->       flatten :: GenState st -> IO (GenState st)
->       flatten st = do
+>       -- now run tryDeflate until fixed point is hit k-times
+>       -- the k factor helps give multiple chances to nodes with pre-conditions
+>       -- a better solution is needed(?)
+>       flatten :: GenState st -> Int -> IO (GenState st)
+>       flatten st 0 = return st
+>       flatten st k = do
 >          st' <- tryDeflate st
 >          let n = length $ versions $ dug st
 >          let n' = length $ versions $ dug st'
 >          if n == n' then
->             return st'
+>             flatten st' (k - 1)
 >          else
->             flatten st'
+>             flatten st' 10
 >
 
 Conversion and interaction
@@ -322,7 +323,8 @@ To interact with other components of Rufous, the DUGs here must be transformed i
 >       }
 >   where
 >       gdVersions = versions gd
->       vs = [(S.opName (nodeOperation n), nodeStates n, nodeOperation n) | n <- gdVersions]
+>       vs = [D.VersionNode (labelOf n) (dugArgs2OpArgs gd (nodeArgs n)) (nodeState n) (nodeOperation n) | n <- gdVersions]
+>       labelOf n = S.opName (nodeOperation n)
 >       dugArg2Arg da = 
 >           case da of
 >               Version i    -> D.VersionNodeArg i
@@ -330,6 +332,15 @@ To interact with other components of Rufous, the DUGs here must be transformed i
 >       op2DArgs i = nodeArgs $ gdVersions !! i
 >       op2Args i = (i, map dugArg2Arg (op2DArgs i))
 >       os = M.fromList [op2Args i | i <- [0 .. (length vs) - 1]]
+>
+> dugArgs2OpArgs :: GenDug st -> [DUGArg] -> [S.OpArg st]
+> dugArgs2OpArgs d args = map (dugArg2OpArg d) args
+>
+> dugArg2OpArg :: GenDug st -> DUGArg -> S.OpArg st
+> dugArg2OpArg d a = 
+>   case a of
+>       Version i    -> S.VersionArg $ nodeState (versions d !! i)
+>       NonVersion k -> S.IntArg k
 
 To update the `GenState` objects:
 

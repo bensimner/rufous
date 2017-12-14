@@ -119,7 +119,7 @@ To fill this template in, we need:
 >   where
 >       vs = D.versions d
 >       ops = D.operations d
->       opname ix = let (_, _, o) = (vs !! ix) in S.opName o
+>       opname ix = let o = D.op (vs !! ix) in S.opName o
 >       line ix = intercalate " " $ (name ix) : "=" : opname ix : args ix
 >       name ix = "v" ++ (show ix)
 >       args ix = map arg2str (ops M.! ix)
@@ -132,7 +132,7 @@ To fill this template in, we need:
 > generateDUGSignature :: S.Signature st -> D.DUG st -> String -> String
 > generateDUGSignature s d tyName = unlines (map line vs)
 >   where
->       vs = filter (\(_, (_, _, o)) -> S.isType s S.Generator (S.opName o)) (names d)
+>       vs = filter (\(_, n) -> S.isType s S.Generator (D.op n)) (names d)
 >       line (name, _) = name ++ " :: " ++ tyName ++ " Int"
 >
 > generateADTImpl :: S.Signature st -> S.Implementation -> String
@@ -155,14 +155,14 @@ To fill this template in, we need:
 >   where
 >       vs = names d
 >       obsNames = map S.opName (S.observers s)
->       obs = map fst $ filter (\(_, (_, _, o)) -> S.opName o `elem` obsNames) vs
+>       obs = map fst $ filter (\(_, n) -> (S.opName $ D.op n) `elem` obsNames) vs
 >
 > mutators :: S.Signature st -> D.DUG st -> String
 > mutators s d = intercalate ", " muts
 >   where
 >       vs = names d
 >       mutNames = map S.opName (S.mutators s)
->       muts = map fst $ filter (\(_, (_, _, o)) -> S.opName o `elem` mutNames) vs
+>       muts = map fst $ filter (\(_, n) -> (S.opName $ D.op n) `elem` mutNames) vs
 > 
 > generateDUGFile :: S.Signature st -> D.DUG st -> S.Implementation -> String -> String
 > generateDUGFile s d (impl@(tyName, code)) outFileName = 
@@ -186,7 +186,7 @@ To fill this template in, we need:
 > writeDUGFile :: S.Signature st -> D.DUG st -> S.Implementation -> IO (String, String)
 > writeDUGFile s d (impl@(tyName, _)) = do
 >   let fileName = "dugs/" ++ (S.nameFromType tyName) ++ "_input.hs"
->   let outputFileName = "dugs/" ++ (S.nameFromType tyName) ++ "_output.hs"
+>   let outputFileName = "dugs/" ++ (S.nameFromType tyName) ++ "_output.json"
 >   let fileContents = generateDUGFile s d impl outputFileName
 >   writeFile fileName fileContents
 >   return (fileName, outputFileName)
@@ -209,6 +209,13 @@ To fill this template in, we need:
 >       ExitSuccess   -> readResults outFileName
 > 
 > validateDUG :: S.Signature st -> D.DUG st -> TimingResult -> Either String TimingInfo
-> validateDUG s d tr = undefined
+> validateDUG s d (TimingResult obsResults ti) = if allValid then Right ti else Left "Post-condition failure"
 >   where
->   obsStates = undefined
+>       obsNodes = D.observers s d
+>       validNode n i = S.post (D.op n) (D.args n) i
+>       allValid = all (uncurry validNode) (zip obsNodes obsResults)
+>
+> tryEvaluateDUG :: S.Signature st -> D.DUG st -> S.Implementation -> IO (Either String TimingInfo)
+> tryEvaluateDUG s d impl = do
+>   r <- runDUG s d impl 
+>   return $ r >>= validateDUG s d 

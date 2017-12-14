@@ -10,7 +10,15 @@
 
 Each node in the DUG is just the string of the operation name
 
-> type VersionNode st = (String, [st], S.Operation st)
+> data VersionNode st =
+>   VersionNode 
+>       { label :: String
+>       , args  :: S.OpArgs st
+>       , state :: st
+>       , op    :: S.Operation st
+>       }
+> instance Show (VersionNode st) where
+>   show (VersionNode name _ _ _) = "[" ++ name ++ "]"
 
 Args can be either versiosn from other Nodes in the DUG or non-version arguments
 Currently there is no way of representing a non-version argument from the DUG (such as the result of an observation)
@@ -31,8 +39,10 @@ Then the DUG is just a collection of nodes and a set of edges for each node.
 
 Extracting information from the DUG is easy with a few combinators
 
-> observers :: S.Signature st -> DUG st -> [Int]
-> observers = undefined
+> observers :: S.Signature st -> DUG st -> [VersionNode st]
+> observers s d = filter (not . isObs) (versions d)
+>   where
+>       isObs n = S.isType s S.Observer (op n)
 
 This representation allows easy displaying, such as a graphviz file:
 
@@ -68,7 +78,7 @@ This representation allows easy displaying, such as a graphviz file:
 >       args :: [Arg]
 >       args = operations d M.! ix
 >       name :: String
->       (name, _, _) = versions d !! ix
+>       name = label $ versions d !! ix
 >       args2defn (a : as) (lambdaArgs, bodyArgs) =
 >           case a of
 >               VersionNodeArg _ -> 

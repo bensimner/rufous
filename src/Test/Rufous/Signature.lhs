@@ -43,12 +43,13 @@ An operation of an ADT has a name, and a signature (see: SigParser.lhs)
 >       { opName     :: OperationName
 >       , sig        :: OperationSig
 >       , pre        :: OpArgs st -> Bool
->       , transition :: OpArgs st -> [st]
+>       , transition :: OpArgs st -> st
+>       , post       :: OpArgs st -> Int -> Bool
 >       }
 > instance Eq (Operation st) where
 >   o1 == o2 = (opName o1 == opName o2) && (sig o1 == sig o2)
 > instance Show (Operation st) where
->   show (Simple name s _ _) = "{" ++ show name ++ ": " ++ show s ++ "}"
+>   show (Simple name s _ _ _) = "{" ++ show name ++ ": " ++ show s ++ "}"
 
 Implementations of the ADT are simply a fully-qualified type name and text implementations for each operation
 
@@ -86,7 +87,7 @@ We expose some builder functions that make it easy to construct these maps from 
 > implementation tyName ops = (tyName, M.fromList ops)
 > 
 > operation :: String -> String -> Operation st
-> operation name typeSig = Simple name (parseSig typeSig) (const True) (\_ -> error $ "no transition function for " ++ name)
+> operation name typeSig = Simple name (parseSig typeSig) (const True) (\_ -> error $ "no transition function for " ++ name) (\_ _ -> True)
 >
 > filterType :: OperationType -> Signature st -> [Operation st]
 > filterType t s = filter ((== t) . opType . sig) (M.elems $ operations s)
@@ -100,5 +101,5 @@ We expose some builder functions that make it easy to construct these maps from 
 > observers :: Signature st -> [Operation st]
 > observers = filterType Observer
 > 
-> isType :: Signature st -> OperationType -> String -> Bool
-> isType s t name = name `elem` map opName (filterType t s)
+> isType :: Signature st -> OperationType -> Operation st -> Bool
+> isType s t op = op `elem` (filterType t s)
