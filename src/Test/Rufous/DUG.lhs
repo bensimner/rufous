@@ -7,6 +7,7 @@
 > 
 > import Test.Rufous.RndUtil
 > import qualified Test.Rufous.Signature as S
+> import qualified Test.Rufous.Profile as Pr
 
 Each node in the DUG is just the string of the operation name
 
@@ -43,6 +44,21 @@ Extracting information from the DUG is easy with a few combinators
 > observers s d = filter (not . isObs) (versions d)
 >   where
 >       isObs n = S.isType s S.Observer (op n)
+
+Including extracting the full Profile from the DUG:
+
+> toProfile :: S.Signature st -> DUG st -> Pr.Profile
+> toProfile s d = 
+>    Pr.Profile
+>       { Pr.mutatorWeights = undefined
+>       , Pr.observerWeights = undefined
+>       , Pr.generatorWeights = undefined
+>       , Pr.persistentMutationWeight = 0
+>       , Pr.persistentObservationWeight  = 0
+>       , Pr.mortality = 0
+>       }
+>   where
+>       x = x
 
 This representation allows easy displaying, such as a graphviz file:
 

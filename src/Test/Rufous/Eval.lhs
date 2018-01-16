@@ -42,7 +42,7 @@ Profiling a DUG is relatively simple, taking an outline for a file that runs a D
 >     , "import qualified Data.ByteString.Lazy as B"
 >     , "import Data.Time.Clock"
 >     , ""
->     , "import qualified {}"
+>     , "{}"
 >     , ""
 >     , "{}"
 >     , ""
@@ -95,10 +95,10 @@ To fill this template in, we need:
     - DUG
     - generator type annotations
 
-> fillTemplate moduleName modulePath implDefn dugCode dugAnnotations obs muts fileName =
+> fillTemplate moduleName moduleImport implDefn dugCode dugAnnotations obs muts fileName =
 >   dugTemplate 
 >       `replace` moduleName 
->       `replace` modulePath 
+>       `replace` moduleImport 
 >       `replace` implDefn 
 >       `replace` dugAnnotations 
 >       `replace` dugCode 
@@ -164,17 +164,22 @@ To fill this template in, we need:
 >       mutNames = map S.opName (S.mutators s)
 >       muts = map fst $ filter (\(_, n) -> (S.opName $ D.op n) `elem` mutNames) vs
 > 
-> generateDUGFile :: S.Signature st -> D.DUG st -> S.Implementation -> String -> String
-> generateDUGFile s d (impl@(tyName, code)) outFileName = 
+> generateDUGFile :: S.Signature st -> D.DUG st -> S.Implementation -> String -> String -> String
+> generateDUGFile s d (impl@(tyName, code)) moduleName outFileName = 
 >   fillTemplate 
->       (S.nameFromType tyName)       
->       (S.moduleFromType tyName) 
+>       moduleName
+>       moduleImport
 >       (generateADTImpl s impl)
 >       (generateDUGCode d)
 >       (generateDUGSignature s d tyName)
 >       (observers s d)
 >       (mutators s d)
 >       (outFileName)
+>   where
+>       moduleImport = 
+>           case S.moduleFromType tyName of
+>               "" -> "" -- if not qualified name then do not try import it
+>               s  -> "import " ++ s
 >
 > type TimingInfo   = NominalDiffTime
 > data TimingResult = TimingResult [Int] TimingInfo deriving (Show)
@@ -185,9 +190,12 @@ To fill this template in, we need:
 > 
 > writeDUGFile :: S.Signature st -> D.DUG st -> S.Implementation -> IO (String, String)
 > writeDUGFile s d (impl@(tyName, _)) = do
->   let fileName = "dugs/" ++ (S.nameFromType tyName) ++ "_input.hs"
+>   t <- getCurrentTime
+>   let r = diffTimeToPicoseconds $ utctDayTime t 
+>   let modName = "dug" ++ (show r)
+>   let fileName = "dugs/" ++ modName ++ "_input.hs"
 >   let outputFileName = "dugs/" ++ (S.nameFromType tyName) ++ "_output.json"
->   let fileContents = generateDUGFile s d impl outputFileName
+>   let fileContents = generateDUGFile s d impl modName outputFileName
 >   writeFile fileName fileContents
 >   return (fileName, outputFileName)
 >
