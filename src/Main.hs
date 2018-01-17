@@ -15,45 +15,28 @@ import qualified Test.Rufous.Eval as E
 -- Eventually I'll convert the Datatypes to use Typeable
 -- and then can pass the Haskell expressions in rather than parsing strings
 -- and generating extra code afterwards
---
--- Sets are a good example because operations have pre-conditions on both version and non-version arguments
--- as well as having a good mix of simple observers/generators/mutators
--- and have very different performance depending on profile
---    (insert is cheap, remove/lookup is expensive)
---
 
 impl1 = 
-   S.implementation "Data.Set.Set"
-      [ ("empty", "Data.Set.empty")
-      , ("add", "\\t a -> Data.Set.insert a t")
-      , ("elemAt", "\\t x -> Data.Set.elemAt x t")
-      , ("deleteAt", "\\t x -> Data.Set.deleteAt x t")
-      ]
-
-impl2 = 
-   S.implementation "Data.List.List"
+   S.implementation "[]"
       [ ("empty", "[]")
-      , ("add", "\\t a -> a : t")
-      , ("elemAt", "\\t i -> t !! i")
-      , ("deleteAt", "\\(x:xs) -> xs")
+      , ("snoc", "\\t a -> t ++ [a]")
+      , ("tail'", "\\(t:ts) -> ts")
+      , ("head'", "\\(t:ts) -> t")
       ]
 
--- The pre-conditions here are overly resctive to eliminate the problem of non-determinism 
--- interacting with uniqueness
--- i.e. (add 1 (removeAt 0 (fromList [1, 2])))  may or may not be valid at runtime
-s =
-    (S.signature "T"
-        [ (S.operation "add" "T a -> a -> T a") 
-            { S.pre        = \[S.VersionArg xs, S.IntArg k] -> not (k `elem` xs)  -- uniqueness
-            , S.transition = \[S.VersionArg xs, S.IntArg k] -> (k:xs)
+queue =
+    (S.signature "Q"  -- the type variable to use
+        [ (S.operation "snoc" "T a -> a -> T a") 
+            { S.pre        = const True
+            , S.transition = \[S.VersionArg xs, S.IntArg k] -> xs ++ [k]
             }
-        , (S.operation "deleteAt" "T a -> a -> T a") 
-            { S.pre        = \[S.VersionArg xs, S.IntArg k] -> k >= 0 && k < length xs
-            , S.transition = \[S.VersionArg xs, S.IntArg k] -> xs  -- we do not know which was removed, 
-                                                                   -- need non-deterministic postconditions
+        , (S.operation "tail'" "T a -> T a") 
+            { S.pre        = \[S.VersionArg xs] -> length xs > 0
+            , S.transition = \[S.VersionArg (x:xs)] -> xs
             }
-        , (S.operation "elemAt" "T a -> a -> a") 
-            { S.pre        = \[S.VersionArg xs, S.IntArg k] -> k >= 0 && k < length xs
+        , (S.operation "head'" "T a -> a") 
+            { S.pre        = \[S.VersionArg xs] -> length xs > 0
+            , S.transition = \[S.VersionArg xs] -> xs
             }
         , S.operation "empty" "T a"]
         [ impl1 ])
@@ -61,17 +44,17 @@ s =
 
 p =
     P.Profile
-        { P.mutatorWeights = M.fromList [("add", 2/6), ("deleteAt", 1/6)]
+        { P.mutatorWeights = M.fromList [("snoc", 2/6), ("tail'", 1/6)]
         , P.generatorWeights = M.fromList [("empty", 1/6)]
-        , P.observerWeights = M.fromList [("elemAt", 2/6)]
+        , P.observerWeights = M.fromList [("head'", 2/6)]
         , P.persistentMutationWeight = 0.5
         , P.persistentObservationWeight = 0.5
-        , P.mortality = 0.3
+        , P.mortality = 0.5
         }
 
 main :: IO ()
 main = do
-   gend <- G.generate s p (5, 10)
+   gend <- G.generate queue p (50, 100)
    putStrLn "generated DUG"
    print gend
    let d = G.genDug2DUG gend
@@ -80,7 +63,7 @@ main = do
    D.dug2dot d
    putStrLn "written dot, drawing graphviz in background..."
    putStrLn "running DUG on impl1"
-   r <- E.tryEvaluateDUG s d impl1 
+   r <- E.tryEvaluateDUG queue d impl1 
    case r of 
       Left s -> putStrLn "** ERROR ** " >> putStrLn s
       Right tr -> print tr
