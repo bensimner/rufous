@@ -22,6 +22,6 @@ executable rufous
   build-depends:       base >=4.9 && <4.10
                        , random, containers, parsec, process
                        , aeson, time, bytestring, lens
-                       , QuickCheck, haskell-src-exts
+                       , QuickCheck, template-haskell
   hs-source-dirs:      src
   default-language:    Haskell2010

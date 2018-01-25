@@ -5,6 +5,7 @@ The `Signature' type describes that API
 > module Test.Rufous.Signature where
 >
 > import Control.Lens
+> import Data.Dynamic (Dynamic)
 >
 > import qualified Data.Map as M
 > import qualified Data.Set as S
@@ -45,8 +46,6 @@ The `Signature' type describes that API
 >       }
 >   deriving (Show)
 > makeLenses ''Signature
-
-Constructing a signature is simple using the SigParser module
 
 Obtaining information from the Signature is very easy with some simple combinators:
 
