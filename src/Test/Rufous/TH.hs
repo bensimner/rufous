@@ -89,7 +89,7 @@ mkImpls pairs (decl:decls) = [| $(mkImpl pairs decl) : $(mkImpls pairs decls) |]
 
 mkImpl :: Pairs -> InstanceDec -> Q Exp
 mkImpl pairs (InstanceD Nothing _ (AppT _ ty) []) = 
-   traceShow ("mkImpl", ty, pairs) [| M.fromList $(mkImplPairs ty pairs) |]
+   [| Implementation (M.fromList $(mkImplPairs ty pairs)) |]
 mkImpl _ x = error $ "mkImpl :: Got Unexpected instance declaration :: " ++ show x
 
 mkImplPairs :: Type -> Pairs -> Q Exp
@@ -97,10 +97,12 @@ mkImplPairs ty [] = [| [] |]
 mkImplPairs ty (pair : pairs) = [| $(mkImplPair ty pair) : $(mkImplPairs ty pairs) |]
 
 mkImplPair :: Type -> Pair -> Q Exp
-mkImplPair ty (name, args) = [| ($nameStr, $var) |] 
+mkImplPair ty (name, args) = [| ($nameStr, ($var, $rt)) |] 
    where
       nameStr = return $ LitE $ StringL name
       var = return $ AppE (VarE 'toDyn) (SigE (VarE (mkName name)) (argTys2Type ty args))
+      finalArg = last args
+      rt = return $ AppE (ConE 'ImplType) (SigE (VarE $ mkName "undefined") (aType2Type ty finalArg))
 
 -- Convert Version/NonVersion arguments to proper (concrete) Type expressions
 -- todo: This needs to be more principled, this translation turns everything not-concrete into `Int'

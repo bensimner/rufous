@@ -1,11 +1,11 @@
 An Abstract-Data-Type describes an API for interacting with a datatype
 The `Signature' type describes that API
 
-> {-# LANGUAGE TemplateHaskell #-}
+> {-# LANGUAGE TemplateHaskell, ExistentialQuantification #-}
 > module Test.Rufous.Signature where
 >
 > import Control.Lens
-> import Data.Dynamic (Dynamic)
+> import Data.Dynamic (Dynamic, Typeable)
 >
 > import qualified Data.Map as M
 > import qualified Data.Set as S
@@ -20,7 +20,14 @@ The `Signature' type describes that API
 > data OperationType = Mutator | Observer | Generator
 >   deriving (Eq, Show)
 >
-> type Implementation = M.Map String Dynamic
+> data ImplType = forall t. Typeable t => ImplType t
+> data Implementation = 
+>   Implementation
+>       { _implOperations :: M.Map String (Dynamic, ImplType)
+>       }
+> instance Show Implementation where
+>   show (Implementation m) = show (fst <$> m)
+> makeLenses ''Implementation
 > 
 > data OperationSig =
 >   OperationSig
@@ -51,3 +58,5 @@ Obtaining information from the Signature is very easy with some simple combinato
 
 > operationNames :: Signature -> [String]
 > operationNames s = M.keys $ s ^. operations
+
+Convenience functions and instances:

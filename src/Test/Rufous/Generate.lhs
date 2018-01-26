@@ -61,9 +61,11 @@ During Generation a lot of state needs to be kept:
 
 The state is just the product of these types with information about the ADT:
 
+> type GenDUG = D.DUG BufferedNode BufferedEdge
+
 > data GenState =
 >   GenState 
->       { _dug :: D.DUG BufferedNode BufferedEdge
+>       { _dug :: GenDUG
 >       , _buffer :: [BufferedOperation]
 >       , _sig    :: S.Signature
 >       , _profile :: P.Profile
