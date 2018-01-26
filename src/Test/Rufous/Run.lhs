@@ -4,6 +4,7 @@
 > import Data.Dynamic
 
 > import Data.Time.Clock
+> import Data.Maybe
 
 > import qualified Data.Map as M
 
@@ -39,7 +40,7 @@ The output is a TimingResult for that DUG,
 >       -- todo: Extract the result from the dynamic cell
 >       runVersion :: Typeable t => t -> Dynamic -> (Dynamic -> Maybe t) -> IO NominalDiffTime
 >       runVersion t d f = do
->           let action = (f d) `seq` return ()
+>           let action = (fromJust (f d)) `seq` return ()
 >           ((), time) <- record action
 >           return time
 >       runAll :: [(Dynamic, S.ImplType)] -> IO [NominalDiffTime]
