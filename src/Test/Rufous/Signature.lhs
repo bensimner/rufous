@@ -20,7 +20,7 @@ The `Signature' type describes that API
 > data OperationType = Mutator | Observer | Generator
 >   deriving (Eq, Show)
 >
-> type Implementation = String
+> type Implementation = M.Map String Dynamic
 > 
 > data OperationSig =
 >   OperationSig
