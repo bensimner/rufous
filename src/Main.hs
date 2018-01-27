@@ -33,7 +33,13 @@ class QueueADT q where
 
 instance QueueADT [] where
    snoc x xs = traceShow ("snoc! evaluate") (xs ++ [x])
-   empty     = []
+   empty     = traceShow ("empty! evaluate") ([])
+
+data Shadow x = Shadow Int
+
+instance QueueADT Shadow where
+   snoc x (Shadow q) = Shadow $ q + 1
+   empty = Shadow 0
 
 makeRufousSpec ''QueueADT
 

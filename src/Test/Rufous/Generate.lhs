@@ -63,11 +63,11 @@ The state is just the product of these types with information about the ADT:
 
 > type GenDUG = D.DUG BufferedNode BufferedEdge
 
-> data GenState =
+> data GenState shadow =
 >   GenState 
 >       { _dug :: GenDUG
 >       , _buffer :: [BufferedOperation]
->       , _sig    :: S.Signature
+>       , _sig    :: S.Signature shadow
 >       , _profile :: P.Profile
 >       }
 >   deriving (Show)
@@ -75,7 +75,7 @@ The state is just the product of these types with information about the ADT:
 
 For debugging, a pretty-printing GenState function:
 
-> pprintGenState :: GenState -> String
+> pprintGenState :: GenState shadow -> String
 > pprintGenState st = pprinted
 >   where
 >       pprinted = unlines ["DUG:", dugRepr, "BUFFER:", bufferRepr]
@@ -92,7 +92,7 @@ Pipeline
 
 Now the pipeline has multiple stages, starting from the empty DUG and empty state:
 
-> emptyState :: S.Signature -> P.Profile -> GenState
+> emptyState :: S.Signature shadow -> P.Profile -> GenState shadow
 > emptyState s p = GenState { _dug=D.emptyDug, _buffer=[], _sig=s, _profile=p }
 
 Stage 1
@@ -115,7 +115,7 @@ Then add this operation to the front of the buffer
 >   let bop = BufferedOperation op abstractArgs persistent
 >   return $ bop
 
-> chooseOperation :: GenState -> IO BufferedOperation
+> chooseOperation :: GenState shadow -> IO BufferedOperation
 > chooseOperation st = do
 >   let p = st ^. profile
 >   let ops = M.elems $ st ^. sig ^. S.operations
@@ -124,7 +124,7 @@ Then add this operation to the front of the buffer
 >   bop <- mkBufOp op
 >   return bop
 
-> inflate :: GenState -> IO GenState
+> inflate :: GenState shadow -> IO (GenState shadow)
 > inflate st = do
 >   -- choose an operation
 >   o <- chooseOperation st
@@ -147,13 +147,13 @@ This is done by traversing the buffer and applying the following operation to ea
             - commit that node to that argument
 
 > -- choose a Non-Version argument from the state for some buffered operation
-> deflate_boparg_nonversion :: BufferedOperation -> [BufferedNode] -> S.ArgType -> GenState -> IO (Maybe (S.Arg a Int))
+> deflate_boparg_nonversion :: BufferedOperation -> [BufferedNode] -> S.ArgType -> GenState shadow -> IO (Maybe (S.Arg a Int))
 > deflate_boparg_nonversion bop nodes atype st = do
 >   n <- QC.generate (QC.arbitrary)
 >   return $ Just (S.NonVersion n)
 > 
 > -- TODO: 
-> deflate_boparg_version :: BufferedOperation -> [BufferedNode] -> S.ArgType -> GenState -> IO (Maybe (S.Arg Int a))
+> deflate_boparg_version :: BufferedOperation -> [BufferedNode] -> S.ArgType -> GenState shadow -> IO (Maybe (S.Arg Int a))
 > deflate_boparg_version bop nodes atype st =
 >   if not (null nodes) then do
 >       n <- QC.generate (QC.elements nodes)
@@ -162,7 +162,7 @@ This is done by traversing the buffer and applying the following operation to ea
 >       return Nothing
 >
 > -- update the state after
-> deflate_commitOperation :: BufferedOperation -> [BufferedArg] -> GenState -> IO GenState
+> deflate_commitOperation :: BufferedOperation -> [BufferedArg] -> GenState shadow -> IO (GenState shadow)
 > deflate_commitOperation bop bargs st = do
 >   let i = st ^. dug ^. D.operations & length
 >   let node = BufferedNode (bop ^. bufOp) (map unFilled bargs) i
@@ -178,7 +178,7 @@ This is done by traversing the buffer and applying the following operation to ea
 >           
 > -- try fix some arguments for a buffered operation from the state
 > -- and return the new state
-> deflate_bopargs :: BufferedOperation -> GenState -> IO GenState
+> deflate_bopargs :: BufferedOperation -> GenState shadow -> IO (GenState shadow)
 > deflate_bopargs bop st = do
 >       -- try fill the args up with valid arguments from the DUG
 >       bargs' <- go ((bop ^. bufArgs) `zip` (validArgs bop st)) []
@@ -204,14 +204,14 @@ This is done by traversing the buffer and applying the following operation to ea
 >                   S.NonVersion x -> go bargs (collected ++ [Filled update])
 >                   S.Version    x -> go bargs (collected ++ [Filled update])
 >           
-> deflate_bops :: [BufferedOperation] -> GenState -> IO GenState
+> deflate_bops :: [BufferedOperation] -> GenState shadow -> IO (GenState shadow)
 > deflate_bops [] st = return st
 > deflate_bops (bop:bops) st = do
 >   -- take the head/tail of the buffer
 >   st' <- deflate_bopargs bop st
 >   deflate_bops bops st'
 > 
-> deflate :: GenState -> IO GenState
+> deflate :: GenState shadow -> IO (GenState shadow)
 > deflate st = do
 >   let bops = st ^. buffer
 >   let st'  = st & buffer .~ []
@@ -224,7 +224,7 @@ The first thing to check is that there are enough nodes in the DUG to use as ver
 This happens before any arguments are ever chosen
 
 > -- choose a set of valid arguments for each Node
-> validArgs :: BufferedOperation -> GenState -> [[BufferedNode]]
+> validArgs :: BufferedOperation -> GenState shadow -> [[BufferedNode]]
 > validArgs bop st = do
 >   v <- bop ^. bufArgs
 >   case v of
@@ -234,5 +234,5 @@ This happens before any arguments are ever chosen
 >           node <- st ^. dug ^. D.operations
 >           return node
 
-> checkValid :: BufferedOperation -> [BufferedArg] -> GenState -> Bool
+> checkValid :: BufferedOperation -> [BufferedArg] -> GenState shadow -> Bool
 > checkValid _ _ _ = True

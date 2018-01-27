@@ -13,6 +13,9 @@ The `Signature' type describes that API
 > import qualified Test.Rufous.DUG as D
 > import qualified Test.Rufous.Profile as P
 >
+> data Null x = NullImpl
+>   deriving (Show, Eq, Typeable)
+>
 > type ArgType = Arg () String
 > data Arg v n = Version v | NonVersion n
 >   deriving (Eq, Show)
@@ -46,17 +49,19 @@ The `Signature' type describes that API
 >   deriving (Show)
 > makeLenses ''Operation
 >
-> data Signature =
+> data Signature shadow =
 >   Signature
 >       { _operations :: M.Map String Operation
 >       , _implementations :: [Implementation]
+>       , _nullImpl :: Maybe Implementation
+>       , _shadowImpl :: Maybe Implementation
 >       }
 >   deriving (Show)
 > makeLenses ''Signature
 
 Obtaining information from the Signature is very easy with some simple combinators:
 
-> operationNames :: Signature -> [String]
+> operationNames :: Signature shadow -> [String]
 > operationNames s = M.keys $ s ^. operations
 
 Convenience functions and instances:
