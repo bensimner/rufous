@@ -12,6 +12,9 @@ import Language.Haskell.TH.Syntax (showName)
 
 import Test.Rufous.Signature
 
+import Control.Exception
+import Test.Rufous.Exceptions
+
 -- Classifying a list of args into a type is straightforward:
 
 isVersion (Version v) = True
@@ -50,12 +53,10 @@ makeRufousSpec name = do
 
 
          let sig = [| Signature $ops $impls (Just $(buildImpl nullImpl)) $shadow  |]
-
          let specName = mkName $ "_" ++ (nameBase name)
          let specPat = return $ VarP specName
          ds <- [d| $specPat = $sig |]
-         let dsSig = SigD specName (AppT (ConT ''Signature) shadowTy)
-         return $ nullDecl : dsSig : ds
+         return $ nullDecl : ds
       _ -> fail "makeRufousSpec expected class name as argument"
 
 selectBuilders :: [InstanceBuilder] -> (Maybe InstanceBuilder, [InstanceBuilder])
@@ -133,8 +134,9 @@ mkNullImplFromPair (name, args) = do
    if isVersion . last $ args then do
       null' <- [| NullImpl |]
       return $ [FunD name' [Clause patterns (NormalB $ null') []]]
-   else
-      return $ [FunD name' [Clause patterns (NormalB $ LitE $ IntPrimL 1) []]]
+   else do
+      impl <- [| throw NotImplemented |]
+      return  $ [FunD name' [Clause patterns (NormalB $ impl) []]]
 
 mkPats :: [ArgType] -> [Pat]
 mkPats [] = []

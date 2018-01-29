@@ -26,15 +26,12 @@ The output is a TimingResult for that DUG,
 >       versionActions = do
 >           (i, node) <- zip [0..] $ dug ^. D.operations
 >           let opName = node ^. G.nodeOperation ^. S.opName
->           let (dynFunc, t) = (impl ^. S.implOperations) M.! opName
 >           let dynArgs = do
 >               arg <- node ^. G.nodeArgs
 >               case arg of
->                   S.Version i    -> return $ (versionActions !! i & fst)
+>                   S.Version i    -> return $ ((versionActions !! i) & fst)
 >                   S.NonVersion k -> return $ toDyn (k :: Int)
->           let dynResult f [] = f
->               dynResult f (a:as) = dynResult (f `dynApp` a) as
->           return (dynResult dynFunc dynArgs, t)
+>           return $ G.runNode impl opName dynArgs
 > 
 >       -- the `t` is needed here to constrain the dynamic unwrap
 >       -- todo: Extract the result from the dynamic cell

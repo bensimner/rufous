@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes, ExistentialQuantification, FlexibleContexts, TemplateHaskell #-}
+{-# LANGUAGE GADTs, FlexibleContexts, TemplateHaskell #-}
 
 module Main where
 
@@ -14,6 +14,9 @@ import Test.Rufous.Generate
 import Test.Rufous.TH
 import Test.Rufous.Profile
 import Test.Rufous.Run
+import Test.Rufous.Extract
+import Control.Exception
+import Test.Rufous.Exceptions
 
 import Language.Haskell.TH
 
@@ -22,24 +25,36 @@ import Debug.Trace
 
 p = 
    Profile 
-      { _operationWeights=M.fromList [("snoc", 1/2), ("empty", 1/2)]
-      , _persistentApplicationWeights=M.fromList [("snoc", 1/2), ("empty", 1/1)]
+      { _operationWeights=M.fromList [("snoc", 1/4), ("empty", 1/4), ("head'", 1/4), ("tail'", 1/4)]
+      , _persistentApplicationWeights=M.fromList [("snoc", 1/2), ("empty", 1/1), ("head'", 1/1), ("tail'", 1/1)]
       , _mortality=1/2
       }
 
 class QueueADT q where
    snoc :: a -> q a -> q a
    empty :: q a
+   head' :: q a -> a
+   tail' :: q a -> q a
 
 instance QueueADT [] where
    snoc x xs = traceShow ("snoc! evaluate") (xs ++ [x])
    empty     = traceShow ("empty! evaluate") ([])
+   head' = head
+   tail' = tail
 
+-- A Shadow is generally a valid implementation tagged with some 
+-- additional information
 data Shadow x = Shadow Int
 
 instance QueueADT Shadow where
-   snoc x (Shadow q) = Shadow $ q + 1
+   snoc x (Shadow q) = Shadow (q + 1)
    empty = Shadow 0
+
+   tail' (Shadow 0) = throw GuardFailed
+   tail' (Shadow q) = Shadow (q - 1)
+
+   head' (Shadow 0) = throw GuardFailed
+   head' (Shadow q) = throw NotImplemented
 
 makeRufousSpec ''QueueADT
 

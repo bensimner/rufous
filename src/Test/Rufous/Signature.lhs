@@ -1,7 +1,7 @@
 An Abstract-Data-Type describes an API for interacting with a datatype
 The `Signature' type describes that API
 
-> {-# LANGUAGE TemplateHaskell, ExistentialQuantification #-}
+> {-# LANGUAGE StandaloneDeriving, TemplateHaskell, ExistentialQuantification #-}
 > module Test.Rufous.Signature where
 >
 > import Control.Lens
@@ -49,19 +49,20 @@ The `Signature' type describes that API
 >   deriving (Show)
 > makeLenses ''Operation
 >
-> data Signature shadow =
+> type ShadowImplementation = Implementation
+> data Signature =
 >   Signature
 >       { _operations :: M.Map String Operation
 >       , _implementations :: [Implementation]
 >       , _nullImpl :: Maybe Implementation
->       , _shadowImpl :: Maybe Implementation
+>       , _shadowImpl :: Maybe ShadowImplementation
 >       }
 >   deriving (Show)
 > makeLenses ''Signature
 
 Obtaining information from the Signature is very easy with some simple combinators:
 
-> operationNames :: Signature shadow -> [String]
+> operationNames :: Signature -> [String]
 > operationNames s = M.keys $ s ^. operations
 
 Convenience functions and instances:
