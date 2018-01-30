@@ -68,5 +68,6 @@ main = do
    deflated <- deflate inflated
    putStrLn $ pprintGenState deflated
    print $ deflated
+   gendug2dot (deflated ^. dug) (".tmp")
    tr <- runDUG ((_QueueADT ^. implementations) !! 0) (deflated ^. dug)
    print tr

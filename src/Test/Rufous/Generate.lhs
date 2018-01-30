@@ -318,3 +318,12 @@ This happens before any arguments are ever chosen
 >       Abstract (S.Version    _) -> return $ do
 >           node <- st ^. dug ^. D.operations
 >           return node
+
+Debugging
+---------
+
+> gendug2dot :: GenDUG -> String -> IO ()
+> gendug2dot d fName = D.dug2dot d nlabel elabel fName
+>   where
+>       nlabel = pprintBufNode
+>       elabel = const ""

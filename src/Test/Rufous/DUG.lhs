@@ -4,6 +4,7 @@
 > import Control.Lens (makeLenses, (^.), (%~), (&))
 >
 > import qualified Data.Map as M
+> import System.Process
 > import Data.Maybe
 > 
 > import Test.Rufous.Random
@@ -45,12 +46,18 @@ Initialisation and creation:
 >
 > insertOp :: n -> DUG n e -> DUG n e
 > insertOp n d = d & operations %~ (++ [n])
+>                  & arguments %~ (M.insert ni [])
+>   where 
+>       ni = d ^. operations & length
 
 There are many things one would like to extract from a DUG, which are easy with simple combinators:
 
+> edges :: DUG n e -> [Edge e]
+> edges d = concat $ M.elems (d ^. arguments)
+
 > successors :: DUG n e -> Int -> [Edge e]
 > successors d i = (d ^. arguments) M.! i
-> 
+
 > predecessors :: DUG n e -> Int -> [Edge e]
 > predecessors d i = concat $ map (filter (\e -> i == e ^. to)) (M.elems (d ^. arguments))
 
@@ -64,3 +71,22 @@ For debugging a pretty-printing function is defined:
 >       edgesRepr e = show (e ^. to) ++ "(" ++ ef (e ^. edge) ++ ")"
 >       lined = unlines . map (" + " ++)
 
+and conversion to GraphViz:
+
+> dug2dot :: DUG n e -> (n -> String) -> (e -> String) -> String -> IO ()
+> dug2dot d nlabel elabel fName = do
+>   print "[dot/...] making dot..."
+>   writeFile dotName ""
+>   write "digraph G {"
+>   print "[dot/...] writing nodes..."
+>   write . unlines $ [show i ++ "[label=\"" ++ nlabel n ++ "\"]"  | (i, n) <- zip [0..] (d ^. operations)]
+>   print "[dot/...] writing edges..."
+>   write . unlines $ [show (e ^. from) ++ "->" ++ show (e ^. to) ++ "[label=\"" ++ elabel (e ^. edge) ++ "\"]"  | e <- edges d]
+>   write "}"
+>   print "[dot/...] written dot, compiling to png..."
+>   createProcess (proc "dot" [dotName, "-Tpng", "-o", pngName])
+>   print "[dot/done]"
+>   where
+>       write s = appendFile dotName (s ++ "\n")
+>       dotName = fName ++ ".dot"
+>       pngName = fName ++ ".png"
