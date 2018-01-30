@@ -25,9 +25,9 @@ The output is a TimingResult for that DUG,
 >       versionActions :: [(Dynamic, S.ImplType)]
 >       versionActions = do
 >           (i, node) <- zip [0..] $ dug ^. D.operations
->           let opName = node ^. G.nodeOperation ^. S.opName
+>           let opName = node ^. D.nodeOperation ^. S.opName
 >           let dynArgs = do
->               arg <- node ^. G.nodeArgs
+>               arg <- node ^. D.nodeArgs
 >               case arg of
 >                   S.Version i    -> return $ ((versionActions !! i) & fst)
 >                   S.NonVersion k -> return $ toDyn (k :: Int)

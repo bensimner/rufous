@@ -10,7 +10,6 @@ The `Signature' type describes that API
 > import qualified Data.Map as M
 > import qualified Data.Set as S
 > 
-> import qualified Test.Rufous.DUG as D
 > import qualified Test.Rufous.Profile as P
 >
 > data Null x = NullImpl

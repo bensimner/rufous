@@ -23,36 +23,14 @@ Algorithm:
     - Start with the empty DUG and an empty buffer
     - At each step choose a new operation, and append it to the operations buffer
 
+
 During Generation a lot of state needs to be kept:
     - Firstly the DUG itself has special Nodes that store information about the operation that created it:
+    - Not only that, but Rufous must also store a buffer of operations to perform
 
-> type DUGArg = S.Arg Int Int
-> data BufferedArg = Abstract S.ArgType | Filled DUGArg
+> data BufferedArg = Abstract S.ArgType | Filled D.DUGArg
 >   deriving (Show)
 > makePrisms ''BufferedArg
-> 
-> unFilled :: BufferedArg -> DUGArg
-> unFilled (Filled a) = a
-> unFilled _          = error "unFilled :: Recieved Abstract"
->
-> isFilled :: BufferedArg -> Bool
-> isFilled (Filled a) = True
-> isFilled _          = False
->
-> data BufferedNode =
->   BufferedNode
->       { _nodeOperation :: S.Operation
->       , _nodeArgs      :: [DUGArg]
->       , _nodeIndex     :: Int
->       , _shadow :: Maybe Dynamic  -- if observer node this is Nothing
->       } 
->   deriving (Show)
-> makeLenses ''BufferedNode
->
-> data BufferedEdge = BufferedEdge
->   deriving (Show)
-
-    - Not only that, but Rufous must also store a buffer of operations to perform
 
 > data BufferedOperation =
 >   BufferedOperation 
@@ -65,7 +43,16 @@ During Generation a lot of state needs to be kept:
 
 The state is just the product of these types with information about the ADT:
 
-> type GenDUG = D.DUG BufferedNode BufferedEdge
+> data GenNodeState =
+>   GenNodeState
+>       { _shadow :: Maybe Dynamic
+>       }
+>   deriving (Show)
+> makeLenses ''GenNodeState
+
+
+> type BufferedNode = D.Node GenNodeState
+> type GenDUG = D.DUG GenNodeState ()
 
 > data GenState =
 >   GenState 
@@ -83,17 +70,10 @@ For debugging, a pretty-printing GenState function:
 > pprintGenState st = pprinted
 >   where
 >       pprinted = unlines ["DUG:", dugRepr, "BUFFER:", bufferRepr]
->       dugRepr = lined $ lines (D.pprintDUG pprintBufNode show (st ^. dug))
+>       dugRepr = lined $ lines (D.pprintDUG (st ^. dug))
 >       bufferRepr = lined $ map pprintBufOp (st ^. buffer)
 >       lined = unlines . map (" |" ++)
 > 
-> pprintBufNode :: BufferedNode -> String
-> pprintBufNode n = node ++ "=" ++ name ++ " " ++ args
->   where
->       node = "v" ++ (n ^. nodeIndex & show)
->       name = n ^. nodeOperation ^. S.opName
->       args = intercalate " " (map pprintDArg (n ^. nodeArgs))
->
 >
 > pprintBufOp :: BufferedOperation -> String 
 > pprintBufOp bop = (bop ^. bufOp ^. S.opName) ++ ": " ++ (show (bop ^. bufArgs))
@@ -103,11 +83,7 @@ For debugging, a pretty-printing GenState function:
 
 > pprintBufArg :: BufferedArg -> String 
 > pprintBufArg (Abstract _) = "x"
-> pprintBufArg (Filled darg) = pprintDArg darg
-
-> pprintDArg :: DUGArg -> String 
-> pprintDArg (S.Version i) = "v" ++ show i
-> pprintDArg (S.NonVersion i) = show i
+> pprintBufArg (Filled darg) = D.pprintDArg darg
 
 
 Pipeline
@@ -172,24 +148,102 @@ This is done by traversing the buffer and applying the following operation to ea
         - Otherwise
             - commit that node to that argument
 
-> -- choose a Non-Version argument from the state for some buffered operation
-> deflate_boparg_nonversion :: BufferedOperation -> [BufferedNode] -> S.ArgType -> GenState -> IO (Maybe (S.Arg a Int))
-> deflate_boparg_nonversion bop nodes atype st = do
+To deflate the entire buffer, extract and and reset it before continuing to iterate deflate_bop:
+
+> deflateAll :: GenState -> IO GenState
+> deflateAll st = do
+>   let bops = st ^. buffer
+>   let st'  = st & buffer .~ []
+>   deflate_bops bops st'
+
+> deflate_bops :: [BufferedOperation] -> GenState -> IO GenState
+> deflate_bops [] st = return st
+> deflate_bops (bop:bops) st = do
+>   st' <- deflate_bop bop st
+>   deflate_bops bops st'
+
+Deflating a single operation:
+
+> deflateStep :: GenState -> IO GenState
+> deflateStep st = do
+>   let bop = st ^. buffer & head
+>   let st' = st & buffer %~ tail
+>   deflate_bop bop st'
+
+> deflate_bop :: BufferedOperation -> GenState -> IO GenState
+> deflate_bop bop st = do
+>       args' <- collectArgs bop st
+>       if all isFilled args' then do
+>           committed <- commitOperation bop args' st
+>           case committed of
+>               Nothing -> return $ st & buffer %~ (bop:)  -- todo: better re-try semantics
+>               Just st' -> return st'
+>       else
+>           return$ 
+>               st 
+>               & buffer %~ (bop:)  -- return the argument to the buffer and continue
+
+> collectArgs :: BufferedOperation -> GenState -> IO [BufferedArg]
+> collectArgs bop st = do
+>   let possibleArgs :: [(BufferedArg, [BufferedNode])]
+>       possibleArgs = (bop ^. bufArgs) `zip` (validArgs bop st)
+>   mapM (\(a, ns) -> collectArg bop a ns st) possibleArgs
+
+> collectArg :: BufferedOperation -> BufferedArg -> [BufferedNode] -> GenState -> IO BufferedArg
+> collectArg bop barg nodeChoices st = do
+>   arg <- case barg of   
+>       Filled x    -> return $ Nothing
+>       Abstract at -> case at of
+>           S.Version _    -> chooseVersionArg    bop nodeChoices at st
+>           S.NonVersion _ -> chooseNonVersionArg bop nodeChoices at st
+>   case arg of
+>       Nothing     -> return barg
+>       Just update -> return (Filled update)
+
+> chooseNonVersionArg :: BufferedOperation -> [BufferedNode] -> S.ArgType -> GenState -> IO (Maybe (S.Arg a Int))
+> chooseNonVersionArg _ _ _ _ = do
 >   n <- QC.generate (QC.arbitrary)
 >   return $ Just (S.NonVersion n)
 > 
 > -- TODO: 
-> deflate_boparg_version :: BufferedOperation -> [BufferedNode] -> S.ArgType -> GenState -> IO (Maybe (S.Arg Int a))
-> deflate_boparg_version bop nodes atype st =
+> chooseVersionArg :: BufferedOperation -> [BufferedNode] -> S.ArgType -> GenState -> IO (Maybe (S.Arg Int a))
+> chooseVersionArg bop nodes atype st =
 >   if not (null nodes) then do
 >       n <- QC.generate (QC.elements nodes)
->       return $ Just (S.Version (n ^. nodeIndex))
+>       return $ Just (S.Version (n ^. D.nodeIndex))
 >   else 
 >       return Nothing
->
+>   
 
-The GenDUG is built up alongside its shadow
-but the shadow might fail to build -- the function may have a pre-condition
+The DUG is built up alongside its shadow
+
+> commitOperation :: BufferedOperation -> [BufferedArg] -> GenState -> IO (Maybe GenState)
+> commitOperation bop bargs st = do
+>   let args = map unFilled bargs
+>   print ("tryCommit..", pprintBop bop bargs)
+>   print ("state:", st ^. dug ^. D.operations & map D.pprintNode)
+>   shadow <- tryMakeShadow (st ^. dug) (st ^. sig ^. S.shadowImpl) (bop ^. bufOp) args
+>   print ("commit", shadow)
+>   case shadow of
+>       NoShadow -> mkNewNode args Nothing
+>       WasObserver -> mkNewNode args Nothing
+>       HasShadow s -> mkNewNode args $ Just s
+>       _ -> return Nothing
+>   where
+>       mkNewNode args s = do
+> --insertOp :: S.Operation -> [DUGArg] -> n -> DUG n e -> DUG n e
+>           let nodeSt = GenNodeState s
+>           let node = D.generateNode (bop ^. bufOp) args (st ^. dug) nodeSt
+>           let i = node ^. D.nodeIndex
+>           return $ Just $
+>               st 
+>               & dug %~ (D.insertOp node)
+>               & dug %~ (insertEdges i (node ^. D.nodeArgs))
+>       insertEdges :: Int -> [D.DUGArg] -> GenDUG -> GenDUG
+>       insertEdges i (S.Version v : args) d = D.insertEdge v i () (insertEdges i args d)
+>       insertEdges i (S.NonVersion v : args) d = insertEdges i args d
+>       insertEdges i [] d = d
+>           
 
 > runNode :: S.Implementation -> String -> [Dynamic] -> (Dynamic, S.ImplType)
 > runNode impl opName dynArgs = (dynResult dynFunc dynArgs, t)
@@ -212,7 +266,7 @@ but the shadow might fail to build -- the function may have a pre-condition
 
 > data ShadowResult = NoShadow | WasObserver | HasShadow Dynamic | ShadowGuardFailed
 >   deriving (Show)
-> tryMakeShadow :: GenDUG -> Maybe S.ShadowImplementation -> S.Operation -> [DUGArg] -> IO ShadowResult
+> tryMakeShadow :: GenDUG -> Maybe S.ShadowImplementation -> S.Operation -> [D.DUGArg] -> IO ShadowResult
 > tryMakeShadow dug impl op args = 
 >       case impl of
 >           Just shadowImpl -> do
@@ -227,80 +281,13 @@ but the shadow might fail to build -- the function may have a pre-condition
 >           Nothing -> return NoShadow
 >   where
 >       dynArgs = map mkDyn args
->       mkDyn (S.Version i) = fromJust $ ((dug ^. D.operations) !! i) ^. shadow
+>       mkDyn (S.Version i) = fromJust $ ((dug ^. D.operations) !! i) ^. D.node ^. shadow
 >       mkDyn (S.NonVersion i) = toDyn $ i
 >       -- the fromJust here is safe -- it only gets evaluated in the `just` branch above
 >       (dyn, t) = runNode (fromJust impl) (op ^. S.opName) dynArgs
 >
-> -- update the state after
-> deflate_commitOperation :: BufferedOperation -> [BufferedArg] -> GenState -> IO (Maybe GenState)
-> deflate_commitOperation bop bargs st = do
->   let args = map unFilled bargs
->   print ("tryCommit..", pprintBop bop bargs)
->   print ("state:", st ^. dug ^. D.operations & map pprintBufNode)
->   shadow <- tryMakeShadow (st ^. dug) (st ^. sig ^. S.shadowImpl) (bop ^. bufOp) args
->   print ("commit", shadow)
->   case shadow of
->       NoShadow -> mkNewNode args Nothing
->       WasObserver -> mkNewNode args Nothing
->       HasShadow s -> mkNewNode args $ Just s
->       _ -> return Nothing
->   where
->       mkNewNode args s = do
->           let i = st ^. dug ^. D.operations & length
->           let node = BufferedNode (bop ^. bufOp) args i s
->           return $ Just $
->               st 
->               & dug %~ (D.insertOp node)
->               & dug %~ (insertEdges i (node ^. nodeArgs))
->       insertEdges :: Int -> [DUGArg] -> GenDUG -> GenDUG
->       insertEdges i (S.Version v : args) d = D.insertEdge v i BufferedEdge (insertEdges i args d)
->       insertEdges i (S.NonVersion v : args) d = insertEdges i args d
->       insertEdges i [] d = d
->           
 > -- try fix some arguments for a buffered operation from the state
 > -- and return the new state
-> deflate_bopargs :: BufferedOperation -> GenState -> IO GenState
-> deflate_bopargs bop st = do
->       -- try fill the args up with valid arguments from the DUG
->       bargs' <- go ((bop ^. bufArgs) `zip` (validArgs bop st)) []
->       -- try commit args that satisfy potential guard
->       if all isFilled bargs' then do
->           committed <- deflate_commitOperation bop bargs' st
->           case committed of
->               Nothing -> return $ st & buffer %~ (bop:)  -- todo: better re-try semantics
->               Just st' -> return st'
->       else
->           return$ 
->               st 
->               & buffer %~ (bop:)  -- return the argument to the buffer and continue
->   where
->       --go :: [(BufferedArg, [BufferedNode])] -> [BufferedArg] -> IO [BufferedArg]
->       go [] collected = return $ collected
->       go ((ba, bnodes) : bargs) collected = do
->           arg <- case ba of 
->               Filled   x     -> return $ Nothing  -- Nothing => No Change
->               Abstract atype -> case atype of
->                   S.Version    _ -> deflate_boparg_version bop bnodes atype st
->                   S.NonVersion _ -> deflate_boparg_nonversion bop bnodes atype st
->           case arg of 
->               Nothing     -> go bargs (collected ++ [ba])
->               Just update -> case update of 
->                   S.NonVersion x -> go bargs (collected ++ [Filled update])
->                   S.Version    x -> go bargs (collected ++ [Filled update])
->           
-> deflate_bops :: [BufferedOperation] -> GenState -> IO GenState
-> deflate_bops [] st = return st
-> deflate_bops (bop:bops) st = do
->   -- take the head/tail of the buffer
->   st' <- deflate_bopargs bop st
->   deflate_bops bops st'
-> 
-> deflate :: GenState -> IO GenState
-> deflate st = do
->   let bops = st ^. buffer
->   let st'  = st & buffer .~ []
->   deflate_bops bops st'
 
 Model and Pre-condition checking
 --------------------------------
@@ -319,11 +306,15 @@ This happens before any arguments are ever chosen
 >           node <- st ^. dug ^. D.operations
 >           return node
 
-Debugging
----------
+Buffer operations
+----------------
 
-> gendug2dot :: GenDUG -> String -> IO ()
-> gendug2dot d fName = D.dug2dot d nlabel elabel fName
->   where
->       nlabel = pprintBufNode
->       elabel = const ""
+Collection of useful operations on Buffered* types
+
+> unFilled :: BufferedArg -> D.DUGArg
+> unFilled (Filled a) = a
+> unFilled _          = error "unFilled :: Recieved Abstract"
+>
+> isFilled :: BufferedArg -> Bool
+> isFilled (Filled _) = True
+> isFilled _          = False
