@@ -37,16 +37,10 @@ class QueueADT q where
    tail' :: q a -> q a
 
 instance QueueADT [] where
-   snoc x xs = traceShow ("snoc! evaluate") (xs ++ [x])
-   empty     = traceShow ("empty! evaluate") ([])
+   snoc x xs = xs ++ [x]
+   empty = []
    head' = head
    tail' = tail
-
-instance QueueADT (WrappedADT []) where
-   snoc x xs = _log_operation "snoc" [NonVersion x, Version xs] (snoc (x) (getVersion (xs)))
-   empty = _log_operation "empty" [] (empty)
-   head' xs = _log_observer "head'" [Version xs] (head' (getVersion (xs)))
-   tail' xs = _log_operation "tail'" [Version xs] (tail' (getVersion (xs)))
 
 -- A Shadow is generally a valid implementation tagged with some 
 -- additional information

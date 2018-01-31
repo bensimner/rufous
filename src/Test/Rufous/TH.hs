@@ -1,16 +1,18 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Test.Rufous.TH where
 
+import Control.Lens ((^.), _1)
 import qualified Data.Map as M
 
 import Data.List (isPrefixOf)
-
+import Debug.Trace
 import Data.Dynamic (toDyn)
 
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax (showName)
 
 import Test.Rufous.Signature
+import Test.Rufous.Extract
 
 import Control.Exception
 import Test.Rufous.Exceptions
@@ -39,8 +41,16 @@ makeRufousSpec name = do
          let tyPairs = pairsFromSigds sigds
          let opPairs = pairsToQ tyPairs
          let ops = [| M.fromList $opPairs |]
-         let (maybeShadow, implBuilders) = selectBuilders $ mkImplBuilders tyPairs insts
-         let impls = buildImpls implBuilders
+
+         -- Collect all visible implementations
+         let implBuilders0 = mkImplBuilders tyPairs insts
+         let (maybeShadow, implBuilders) = selectBuilders implBuilders0 -- Extract the Shadow
+         let impls = buildImpls implBuilders -- build the rest into Q Dec's
+
+         -- Make WrappedADT versions of each of them
+         extractorImpls <- mkExtractorImpls name tyPairs implBuilders
+
+         -- Build the Null-implementation
          let (nullImpl, qnullDecl) = mkNullImpl name tyPairs
          nullDecl <- qnullDecl
          let shadow = case maybeShadow of
@@ -51,12 +61,14 @@ makeRufousSpec name = do
                Nothing      -> VarT <$> newName "a"
                Just (ty, _) -> return $ AppT ty (TupleT 0)
 
-
+         -- Finally build the Test.Rufous.Signature.Signature declaration
          let sig = [| Signature $ops $impls (Just $(buildImpl nullImpl)) $shadow  |]
          let specName = mkName $ "_" ++ (nameBase name)
          let specPat = return $ VarP specName
          ds <- [d| $specPat = $sig |]
-         return $ nullDecl : ds
+
+         -- Return all declarations
+         return $ nullDecl : ds ++ extractorImpls
       _ -> fail "makeRufousSpec expected class name as argument"
 
 selectBuilders :: [InstanceBuilder] -> (Maybe InstanceBuilder, [InstanceBuilder])
@@ -92,9 +104,12 @@ argFromType ty =
       VarT name -> NonVersion (showName name)
       x -> error $ "argFromType :: Unexpected value " ++ show x
 
+expsToExp :: [Q Exp] -> Q Exp
+expsToExp [] = [| [] |]
+expsToExp (e:es) = [| ($e) : ($(expsToExp es)) |]
+
 pairsToQ :: Pairs -> Q Exp
-pairsToQ [] = [| [] |]
-pairsToQ (pair:pairs) = [| $(pairToQ pair) : $(pairsToQ pairs) |]
+pairsToQ ps = expsToExp $ map pairToQ $ ps
 
 pairToQ :: (String, [ArgType]) -> Q Exp
 pairToQ (name, args) = do 
@@ -130,7 +145,7 @@ mkNullImplFromPairs (p:ps) = do
 mkNullImplFromPair :: Pair -> Q [Dec]
 mkNullImplFromPair (name, args) = do
    let name' = (mkName name)
-   let patterns = mkPats (init args)
+   let patterns = map (^. _1) $ mkPats (init args)
    if isVersion . last $ args then do
       null' <- [| NullImpl |]
       return $ [FunD name' [Clause patterns (NormalB $ null') []]]
@@ -138,10 +153,67 @@ mkNullImplFromPair (name, args) = do
       impl <- [| throw NotImplemented |]
       return  $ [FunD name' [Clause patterns (NormalB $ impl) []]]
 
-mkPats :: [ArgType] -> [Pat]
-mkPats [] = []
-mkPats (arg:args) = WildP : mkPats args
+mkPats :: [ArgType] -> [(Pat, Arg Name Name)]
+mkPats ats = go ats 0
+   where
+      go [] _ = []
+      go (arg:args) k = 
+         let name' = mkName $ name k 
+         in (VarP name', mkArg arg name') : go args (k + 1)
+      name k = "x" ++ show k
+      mkArg (Version _) name = Version name
+      mkArg (NonVersion _) name = NonVersion name
 
+mkExtractorImpls :: Name -> Pairs -> [InstanceBuilder] -> Q [Dec]
+mkExtractorImpls className pairs impls = sequence . map (mkExtractorImpl className pairs) $ impls
+
+mkExtractorImpl :: Name -> Pairs -> InstanceBuilder -> Q Dec
+mkExtractorImpl className pairs (instTy, _) = traceShow ("mkExtractorImpl", instTy) q
+   where
+      q = do
+         ds <- mkExtractorImplFromPairs pairs
+         return $ InstanceD Nothing [] (AppT (ConT className) (AppT (ConT ''WrappedADT) instTy)) ds
+
+mkExtractorImplFromPairs :: Pairs -> Q [Dec]
+mkExtractorImplFromPairs [] = return $ []
+mkExtractorImplFromPairs (p:ps) = do
+   decl <- mkExtractorImplFromPair p 
+   remain <- mkExtractorImplFromPairs ps
+   return $ decl ++ remain
+
+mkExtractorImplFromPair :: Pair -> Q [Dec]
+mkExtractorImplFromPair (name, args) = do
+   let name' = (mkName name)
+   let nameLit = return $ LitE $ StringL name
+   let patterns = mkPats (init args)
+   -- i.e. ``f x y = _log_operation "f" [NonVersion x, Version y] (f (x) (getVersion (y)))``
+   let pats = map (^. _1) patterns
+   let call = buildCall name' patterns
+   let versionExps = patsToVersions patterns
+   let versionsExp = expsToExp versionExps
+   if not . isVersion . last $ args then do
+      impl' <- [| _log_observer $nameLit $versionsExp $call |] 
+      return $ [FunD name' [Clause pats (NormalB $ impl') []]]
+   else do
+      impl' <- [| _log_operation $nameLit $versionsExp $call |] 
+      return $ [FunD name' [Clause pats (NormalB $ impl') []]]
+
+buildCall :: Name -> [(Pat, Arg Name Name)] -> Q Exp
+buildCall n xs = go xs [| $(return $ VarE n) |]
+   where
+      go [] f = f
+      go ((_, arg) : cs) f = go cs [| $f $(mkArg arg) |]
+      mkArg (Version v) = [| getVersion $(return $ VarE $ v) |]
+      mkArg (NonVersion v) = [| $(return $ VarE $ v) |]
+
+
+patsToVersions :: [(Pat, Arg Name Name)] -> [Q Exp]
+patsToVersions xs = do
+   (VarP n, a) <- xs
+   let ne = return $ VarE n
+   case a of
+      Version n    -> return [| Version $ne |]
+      NonVersion n -> return [| NonVersion $ne |]
 
 isShadowImpl :: InstanceBuilder -> Bool
 isShadowImpl (ty, _) = 
@@ -162,7 +234,7 @@ mkImplBuilderVars ty [] = []
 mkImplBuilderVars ty (p:ps) = mkImplBuilderVar ty p : mkImplBuilderVars ty ps
 
 mkImplBuilderVar :: Type -> Pair -> (String, Type, Type)
-mkImplBuilderVar ty (name, args) = (name, argTys2Type ty args, aType2Type ty finalArg)
+mkImplBuilderVar ty (name, args) = (name, argTysToType ty args, aTypeToType ty finalArg)
    where
       finalArg = last args
 
@@ -187,10 +259,10 @@ buildImplPair (name, ty, retTy) = [| ($nameStr, ($var, $rt)) |]
 -- Convert Version/NonVersion arguments to proper (concrete) Type expressions
 -- todo: This needs to be more principled, this translation turns everything not-concrete into `Int'
 -- which isn't quite right ...
-argTys2Type :: Type -> [ArgType] -> Type
-argTys2Type ty [retTy]   = aType2Type ty retTy
-argTys2Type ty (aty:tys) = AppT (AppT ArrowT (aType2Type ty aty)) (argTys2Type ty tys)
+argTysToType :: Type -> [ArgType] -> Type
+argTysToType ty [retTy]   = aTypeToType ty retTy
+argTysToType ty (aty:tys) = AppT (AppT ArrowT (aTypeToType ty aty)) (argTysToType ty tys)
 
-aType2Type :: Type -> ArgType -> Type
-aType2Type ty (Version ()) = AppT ty (ConT (mkName "Int"))
-aType2Type ty (NonVersion x) = ConT (mkName "Int")
+aTypeToType :: Type -> ArgType -> Type
+aTypeToType ty (Version ()) = AppT ty (ConT (mkName "Int"))
+aTypeToType ty (NonVersion x) = ConT (mkName "Int")
