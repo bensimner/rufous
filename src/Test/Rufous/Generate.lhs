@@ -4,8 +4,8 @@
 > import Control.Lens (makeLenses, makePrisms, (^.), (&), (%~), (.~))
 > import Test.QuickCheck as QC
 > import Control.Exception
-> import Data.List
-> import Data.Maybe
+> import Data.Maybe (fromJust)
+> import Data.List (intercalate)
 > import Data.Dynamic
 > import qualified Data.Map as M
 >
@@ -52,7 +52,7 @@ The state is just the product of these types with information about the ADT:
 
 
 > type BufferedNode = D.Node GenNodeState
-> type GenDUG = D.DUG GenNodeState ()
+> type GenDUG = D.DUG GenNodeState
 
 > data GenState =
 >   GenState 
@@ -240,7 +240,7 @@ The DUG is built up alongside its shadow
 >               & dug %~ (D.insertOp node)
 >               & dug %~ (insertEdges i (node ^. D.nodeArgs))
 >       insertEdges :: Int -> [D.DUGArg] -> GenDUG -> GenDUG
->       insertEdges i (S.Version v : args) d = D.insertEdge v i () (insertEdges i args d)
+>       insertEdges i (S.Version v : args) d = D.insertEdge v i (insertEdges i args d)
 >       insertEdges i (S.NonVersion v : args) d = insertEdges i args d
 >       insertEdges i [] d = d
 >           

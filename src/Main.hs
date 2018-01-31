@@ -43,10 +43,10 @@ instance QueueADT [] where
    tail' = tail
 
 instance QueueADT (WrappedADT []) where
-   snoc x xs = _log_operation "snoc" [xs] (snoc (x) (getVersion (xs)))
+   snoc x xs = _log_operation "snoc" [NonVersion x, Version xs] (snoc (x) (getVersion (xs)))
    empty = _log_operation "empty" [] (empty)
-   head' xs = _log_observer "head'" [xs] (head' (getVersion (xs)))
-   tail' xs = _log_operation "tail'" [xs] (tail' (getVersion (xs)))
+   head' xs = _log_observer "head'" [Version xs] (head' (getVersion (xs)))
+   tail' xs = _log_operation "tail'" [Version xs] (tail' (getVersion (xs)))
 
 -- A Shadow is generally a valid implementation tagged with some 
 -- additional information
@@ -64,8 +64,9 @@ instance QueueADT Shadow where
 
 makeRufousSpec ''QueueADT
 
-example_program :: QueueADT q => q Int -> IO ()
-example_program q = do
+example_program :: IO ()
+example_program = do
+   let q = (empty :: WrappedADT [] Int)
    let q' = snoc 1 q
    print $ head' q'
    let q'' = snoc 2 q'
@@ -88,7 +89,9 @@ main_generate = do
 main_extract :: IO ()
 main_extract = do
    init_state
-   example_program (empty :: WrappedADT [] Int)
-   read_state
+   example_program
+   dug <- read_state _QueueADT
+   D.dug2dot (dug) ("tmp")
+   return ()
 
-main = main_generate
+main = main_extract
