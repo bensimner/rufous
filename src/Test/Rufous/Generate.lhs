@@ -124,14 +124,19 @@ Then add this operation to the front of the buffer
 >   return bop
 
 > inflate :: GenState -> IO GenState
-> inflate st = inflateBuffer 10 st
+> inflate st = go 10 st
 >   where
->       inflateBuffer 0 st = return st
->       inflateBuffer n st = do
->           o <- chooseOperation st
->           let st' = st
->                   & buffer %~ (o :)
->           inflateBuffer (n - 1) st'
+>       go 0 st = return st
+>       go n st = do
+>           st' <- inflateStep st
+>           go (n-1) st'
+
+> inflateStep :: GenState -> IO GenState
+> inflateStep st = do
+>   o <- chooseOperation st
+>   let st' = st
+>           & buffer %~ (o :)
+>   return st'
 
 Stage 2 
 -------
@@ -162,13 +167,26 @@ To deflate the entire buffer, extract and and reset it before continuing to iter
 >   st' <- deflate_bop bop st
 >   deflate_bops bops st'
 
-Deflating a single operation:
+Deflating a single operation in a single step:
 
 > deflateStep :: GenState -> IO GenState
 > deflateStep st = do
 >   let bop = st ^. buffer & head
 >   let st' = st & buffer %~ tail
 >   deflate_bop bop st'
+
+To commit a single BufferedOperation is simple:
+    - Try to collect a set of valid arguments
+        - (if fail: return operation to buffer and continue)
+    - Try to test guard/shadow
+        - (if fail: return to buffer and continue)*
+    - Commit new node to DUG and update old node states
+
+*TODO:
+This could be improved -- a failing pre-condition probably means that the non-version arguments
+failed. Not that the entire operation is a fail.
+Secondly, when contuning nothing stops this operation being attempted again with the same 
+arguments in an infinite loop!
 
 > deflate_bop :: BufferedOperation -> GenState -> IO GenState
 > deflate_bop bop st = do
@@ -216,14 +234,16 @@ Deflating a single operation:
 >   
 
 The DUG is built up alongside its shadow
+This is done by attempting to "commit" the operation to the DUG
+and failing if the shadow fails to compute in a well-constrained way.
+
+Specifically: if the shadow throws a ``Test.Rufous.Exceptions.GuardFailed`` exception,
+then do not commit to the DUG and instead return Nothing.
 
 > commitOperation :: BufferedOperation -> [BufferedArg] -> GenState -> IO (Maybe GenState)
 > commitOperation bop bargs st = do
 >   let args = map unFilled bargs
->   print ("tryCommit..", pprintBop bop bargs)
->   print ("state:", st ^. dug ^. D.operations & map D.pprintNode)
 >   shadow <- tryMakeShadow (st ^. dug) (st ^. sig ^. S.shadowImpl) (bop ^. bufOp) args
->   print ("commit", shadow)
 >   case shadow of
 >       NoShadow -> mkNewNode args Nothing
 >       WasObserver -> mkNewNode args Nothing
@@ -231,19 +251,12 @@ The DUG is built up alongside its shadow
 >       _ -> return Nothing
 >   where
 >       mkNewNode args s = do
-> --insertOp :: S.Operation -> [DUGArg] -> n -> DUG n e -> DUG n e
 >           let nodeSt = GenNodeState s
 >           let node = D.generateNode (bop ^. bufOp) args (st ^. dug) nodeSt
 >           let i = node ^. D.nodeIndex
 >           return $ Just $
 >               st 
 >               & dug %~ (D.insertOp node)
->               & dug %~ (insertEdges i (node ^. D.nodeArgs))
->       insertEdges :: Int -> [D.DUGArg] -> GenDUG -> GenDUG
->       insertEdges i (S.Version v : args) d = D.insertEdge v i (insertEdges i args d)
->       insertEdges i (S.NonVersion v : args) d = insertEdges i args d
->       insertEdges i [] d = d
->           
 
 > runNode :: S.Implementation -> String -> [Dynamic] -> (Dynamic, S.ImplType)
 > runNode impl opName dynArgs = (dynResult dynFunc dynArgs, t)
@@ -305,6 +318,23 @@ This happens before any arguments are ever chosen
 >       Abstract (S.Version    _) -> return $ do
 >           node <- st ^. dug ^. D.operations
 >           return node
+
+API
+---
+
+> makeDUG :: S.Signature -> P.Profile -> Int -> IO GenDUG
+> makeDUG s p size = do
+>       st <- go size (emptyState s p)
+>       return $ st ^. dug
+>   where
+>       go :: Int -> GenState -> IO GenState
+>       go size st =
+>           if size <= (st ^. dug ^. D.operations & length) then
+>               return st
+>           else do
+>               st' <- inflateStep st
+>               st'' <- deflateStep st'
+>               go size st''
 
 Buffer operations
 ----------------
