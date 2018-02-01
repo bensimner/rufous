@@ -4,12 +4,14 @@
 > import Control.Lens (makeLenses, (^.), (%~), (&))
 >
 > import qualified Data.Map as M
+> import qualified Data.Set as St
 > import Data.Maybe (fromMaybe)
 > import System.Process
 > import Data.List (intercalate)
 > 
 > import Test.Rufous.Random
 > import qualified Test.Rufous.Signature as S
+> import qualified Test.Rufous.Profile as P
 
 The core type that Rufous deals with is the Datatype-Usage-Graph (DUG).
 Control flow through rufous is typically transformations of and between DUG types.
@@ -92,11 +94,17 @@ There are many things one would like to extract from a DUG, which are easy with 
 > edges :: DUG n -> [Edge]
 > edges d = concat $ M.elems (d ^. arguments)
 
-> successors :: DUG n -> Int -> [Edge]
-> successors d i = (d ^. arguments) M.! i
+> successors :: DUG n -> Int -> [Int]
+> successors d i = [e ^. to | e <- (d ^. arguments) M.! i]
 
-> predecessors :: DUG n -> Int -> [Edge]
-> predecessors d i = concat $ map (filter (\e -> i == e ^. to)) (M.elems (d ^. arguments))
+> predecessors :: DUG n -> Int -> [Int]
+> predecessors d i = [e ^. to | e <- concat . map (filter (\e -> i == e ^. to)) $ (M.elems (d ^. arguments))]
+
+> opName :: DUG n -> Int -> String
+> opName d i = ((d ^. operations) !! i) ^. nodeOperation ^. S.opName
+
+> opType :: DUG n -> Int -> S.OperationType
+> opType d i = ((d ^. operations) !! i) ^. nodeOperation ^. S.opSig ^. S.opType
 
 Debugging
 ---------
@@ -144,3 +152,65 @@ and conversion to GraphViz:
 >       write s = appendFile dotName (s ++ "\n")
 >       dotName = fName ++ ".dot"
 >       pngName = fName ++ ".png"
+
+Profile Extraction
+------------------
+
+Extracting a profile from a DUG is fairly straightforward:
+    - To extract mortality see how many nodes are source in arguments
+    - To extract weights of operations see how many nodes for each operation
+    - To extract persistent applications of each operation is harder:
+        - For each *edge*, count up how many originate from
+          a node with another outgoing edge to another 
+          operation with the same kind
+
+> extractProfile :: DUG n -> P.Profile
+> extractProfile d = P.Profile weights persistentApplicationWeights mortality
+>   where
+>       argKeys = d ^. arguments & M.keysSet
+>       totalNodes = fromIntegral $ length $ d ^. operations 
+>       livingNodes = fromIntegral $ length $ filter (\n -> (n ^. nodeIndex) `St.member` argKeys) (d ^. operations)
+>       mortality = 1 - (livingNodes / totalNodes)
+>       weights = (/ totalNodes) <$> countOperations d
+>       persistentOpCount = persistentWeights d
+>       opCount = countArguments d
+>       persistentApplicationWeights = M.mapWithKey (\k a -> a / (opCount M.! k)) persistentOpCount
+
+> update :: Ord k => k -> (a -> a) -> a -> M.Map k a -> M.Map k a
+> update k f v m = M.insert k v' m
+>   where
+>       v' = fromMaybe v (f <$> (M.lookup k m))
+
+> countOperations :: Num a => DUG n -> M.Map String a
+> countOperations d = go (d ^. operations) (M.empty)
+>   where
+>       go [] m = m
+>       go (o:os) m = let m' = update (o ^. nodeOperation ^. S.opName) (+1) 1 m
+>                     in go os m'
+
+> countArguments :: Num a => DUG n -> M.Map String a
+> countArguments d = go (d ^. arguments & M.keys) (M.empty)
+>   where
+>       go [] m = m
+>       go (i:is) m = let m' = update (opName d i) (+1) 1 m
+>                     in go is m'
+
+> sameKind :: DUG n -> Int -> Int -> Bool
+> sameKind d i j =
+>   case (opType d i, opType d j) of
+>       (S.Observer, S.Observer) -> True
+>       (S.Observer, _) -> False
+>       (_, S.Observer) -> False
+>       (_, _) -> True
+
+> persistentWeights :: Num a => DUG n -> M.Map String a
+> persistentWeights d = go (concat (d ^. arguments & M.elems)) M.empty
+>   where
+>       go [] m = m
+>       go (e:es) m =
+>           let name = opName d (e ^. to) in
+>           let succs = successors d (e ^. from) in
+>           let m' = if 2 <= (length $ filter (sameKind d (e ^. to)) succs)
+>               then update name (+1) 1 m
+>               else update name (+0) 0 m
+>           in go es m'

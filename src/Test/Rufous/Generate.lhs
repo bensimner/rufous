@@ -8,6 +8,7 @@
 > import Data.List (intercalate)
 > import Data.Dynamic
 > import qualified Data.Map as M
+> import qualified Data.Set as St
 >
 > import qualified Test.Rufous.DUG as D
 > import qualified Test.Rufous.Signature as S
@@ -22,7 +23,6 @@ keeping a fully-constructed DUG and adding to it in a loop.
 Algorithm:
     - Start with the empty DUG and an empty buffer
     - At each step choose a new operation, and append it to the operations buffer
-
 
 During Generation a lot of state needs to be kept:
     - Firstly the DUG itself has special Nodes that store information about the operation that created it:
@@ -41,7 +41,23 @@ During Generation a lot of state needs to be kept:
 >   deriving (Show)
 > makeLenses ''BufferedOperation
 
-The state is just the product of these types with information about the ADT:
+Each stored node has some additional state:
+    - Whether the node is dead or alive.
+        Dead nodes are not mutated further
+    - Whether the node is an infant
+        - Infant nodes have just been created and not been mutated yet.
+    - Whether the node is ephemeral
+        - Ephemeral nodes should only be used once
+    - Whether the node is persistent
+        - Persistent nodes cannot be used except by persistent applications
+
+> data OperationNodes =
+>   OperationNodes
+>       { _infants :: St.Set Int
+>       , _persistents :: St.Set Int
+>       }
+>   deriving (Show)       
+> makeLenses ''OperationNodes
 
 > data GenNodeState =
 >   GenNodeState
@@ -51,8 +67,11 @@ The state is just the product of these types with information about the ADT:
 > makeLenses ''GenNodeState
 
 
+
 > type BufferedNode = D.Node GenNodeState
 > type GenDUG = D.DUG GenNodeState
+
+The state is just the product of these types with information about the ADT:
 
 > data GenState =
 >   GenState 
@@ -60,6 +79,9 @@ The state is just the product of these types with information about the ADT:
 >       , _buffer :: [BufferedOperation]
 >       , _sig    :: S.Signature
 >       , _profile :: P.Profile
+>       , _livingNodes :: St.Set Int
+>       , _mutatorNodes :: OperationNodes
+>       , _observerNodes :: OperationNodes
 >       }
 >   deriving (Show)
 > makeLenses ''GenState
@@ -92,7 +114,14 @@ Pipeline
 Now the pipeline has multiple stages, starting from the empty DUG and empty state:
 
 > emptyState :: S.Signature -> P.Profile -> GenState
-> emptyState s p = GenState { _dug=D.emptyDug, _buffer=[], _sig=s, _profile=p }
+> emptyState s p = GenState 
+>   { _dug=D.emptyDug
+>   , _buffer=[]
+>   , _sig=s
+>   , _profile=p
+>   , _livingNodes=St.empty
+>   , _mutatorNodes=OperationNodes St.empty St.empty
+>   , _observerNodes=OperationNodes St.empty St.empty }
 
 Stage 1
 -------
@@ -240,23 +269,62 @@ and failing if the shadow fails to compute in a well-constrained way.
 Specifically: if the shadow throws a ``Test.Rufous.Exceptions.GuardFailed`` exception,
 then do not commit to the DUG and instead return Nothing.
 
+When committed it's important to move the new node into the correct buckets:
+    It is now a living node,
+    An infant observer node,
+    and an infant mutator node
+
 > commitOperation :: BufferedOperation -> [BufferedArg] -> GenState -> IO (Maybe GenState)
 > commitOperation bop bargs st = do
 >   let args = map unFilled bargs
 >   shadow <- tryMakeShadow (st ^. dug) (st ^. sig ^. S.shadowImpl) (bop ^. bufOp) args
+>   alive <- R.randomBool (1 - (st ^. profile ^. P.mortality))
 >   case shadow of
->       NoShadow -> mkNewNode args Nothing
->       WasObserver -> mkNewNode args Nothing
->       HasShadow s -> mkNewNode args $ Just s
+>       NoShadow -> mkNewNode args alive Nothing
+>       WasObserver -> mkNewNode args alive Nothing
+>       HasShadow s -> mkNewNode args alive $ Just s
 >       _ -> return Nothing
 >   where
->       mkNewNode args s = do
+>       mkNewNode args alive s = do
 >           let nodeSt = GenNodeState s
 >           let node = D.generateNode (bop ^. bufOp) args (st ^. dug) nodeSt
 >           let i = node ^. D.nodeIndex
 >           return $ Just $
->               st 
+>               st
 >               & dug %~ (D.insertOp node)
+>               & updateNodeLiving i alive
+>               & updateNewNode i
+>               & updateOldNodes args
+>   
+>       updateNewNode i st =
+>           if bop ^. bufOp ^. S.opSig ^. S.opType /= S.Observer 
+>               then
+>                   st
+>                   & mutatorNodes . infants %~ (St.insert i)
+>                   & observerNodes . infants %~ (St.insert i)
+>               else st
+> 
+>       updateNodeLiving i alive st =
+>           if alive 
+>               then st & livingNodes %~ (St.insert i)
+>               else st
+>
+>       updateOldNodes [] st = st
+>       updateOldNodes (arg:args) st = updateOldNodes args (updateNode arg st)
+>       updateNode arg st = 
+>           case (arg, bop ^. persistent, bop ^. bufOp ^. S.opSig ^. S.opType) of
+>               (S.Version i, False, S.Observer) -> 
+>                   st & observerNodes . infants %~ (St.delete i)
+>               (S.Version i, False, _) -> 
+>                   st & mutatorNodes . infants %~ (St.delete i)
+>               (S.Version i, True, S.Observer) -> 
+>                   st & observerNodes . infants %~ (St.delete i)
+>                      & observerNodes . persistents %~ (St.insert i)
+>               (S.Version i, True, _) -> 
+>                   st & mutatorNodes . infants %~ (St.delete i)
+>                      & mutatorNodes . persistents %~ (St.insert i)
+>               _                      -> st
+>           
 
 > runNode :: S.Implementation -> String -> [Dynamic] -> (Dynamic, S.ImplType)
 > runNode impl opName dynArgs = (dynResult dynFunc dynArgs, t)
@@ -312,12 +380,25 @@ This happens before any arguments are ever chosen
 > validArgs :: BufferedOperation -> GenState -> [[BufferedNode]]
 > validArgs bop st = do
 >   v <- bop ^. bufArgs
->   case v of
->       Filled _                  -> return []
->       Abstract (S.NonVersion _) -> return []
->       Abstract (S.Version    _) -> return $ do
->           node <- st ^. dug ^. D.operations
->           return node
+>   return $ ((st ^. dug ^. D.operations) !!) <$> nodes v
+>   where
+>       living = st ^. livingNodes
+>       observerInfants = st ^. observerNodes ^. infants
+>       mutatorInfants = st ^. observerNodes ^. infants
+>       observerPersistents = st ^. observerNodes ^. persistents
+>       mutatorPersistents = st ^. observerNodes ^. persistents
+>       nodes v = 
+>           case (v, bop ^. persistent, bop ^. bufOp ^. S.opSig ^. S.opType) of
+>               (Filled _, _, _) -> []
+>               (Abstract (S.NonVersion _), _, _) -> []
+>               (Abstract (S.Version    _), False, S.Observer) -> 
+>                   St.toList $ living `St.intersection` observerInfants
+>               (Abstract (S.Version    _), False, _) -> 
+>                   St.toList $ living `St.intersection` mutatorInfants
+>               (Abstract (S.Version    _), True, S.Observer) -> 
+>                   St.toList $ living `St.intersection` (observerInfants `St.union` observerPersistents)
+>               (Abstract (S.Version    _), True, _) -> 
+>                   St.toList $ living `St.intersection` (mutatorInfants `St.union` mutatorPersistents)
 
 API
 ---
