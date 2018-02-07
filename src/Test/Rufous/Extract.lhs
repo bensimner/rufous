@@ -136,10 +136,7 @@ Then a set of logging functions can update the state in an unsafe way:
 > read_state :: S.Signature -> IO (ExtractedDUG)
 > read_state s = do
 >   extractor_state <- readIORef state
->   -- todo: read the state and build the DUG
 >   let dug = extractDUG s extractor_state
->   print (unsafeCoerce (nodes extractor_state) :: M.Map Int (WrappedADT [] Int))
->   putStrLn $ D.pprintDUG dug
 >   return dug
 
 > extract :: S.Signature -> IO a -> IO (a, ExtractedDUG)
