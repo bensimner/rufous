@@ -22,7 +22,7 @@ The `Signature' type describes that API
 > data OperationType = Mutator | Observer | Generator
 >   deriving (Eq, Show)
 >
-> data ImplType = forall t. Typeable t => ImplType t
+> data ImplType = forall t. (Show t, Typeable t) => ImplType t
 > data Implementation = 
 >   Implementation
 >       { _implOperations :: M.Map String (Dynamic, ImplType)
@@ -53,7 +53,8 @@ The `Signature' type describes that API
 >   Signature
 >       { _operations :: M.Map String Operation
 >       , _implementations :: [Implementation]
->       , _nullImpl :: Maybe Implementation
+>       , _nullImpl :: Implementation
+>       , _nullExtractorImpl :: Implementation
 >       , _shadowImpl :: Maybe ShadowImplementation
 >       }
 >   deriving (Show)

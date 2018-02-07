@@ -112,9 +112,12 @@ Debugging
 For debugging a pretty-printing function is defined:
 
 > pprintDUG :: DUG n -> String 
-> pprintDUG d = lined ["Operations:", operationsRepr, "Arguments:", argumentsRepr]
+> pprintDUG = flip pprintDUG' pprintNode
+
+> pprintDUG' :: DUG n -> (Node n -> String) -> String 
+> pprintDUG' d f = lined ["Operations:", operationsRepr, "Arguments:", argumentsRepr]
 >   where
->       operationsRepr = lined [pprintNode n | n <- d ^. operations]
+>       operationsRepr = lined [f n | n <- d ^. operations]
 >       argumentsRepr  = lined ["n" ++ show n ++ " -> " ++ show (map edgesRepr es) | (n, es) <- d ^. arguments & M.toList]
 >       edgesRepr e = show (e ^. to)
 >       lined = unlines . map (" + " ++)
@@ -136,14 +139,17 @@ For debugging a pretty-printing function is defined:
 and conversion to GraphViz:
 
 > dug2dot :: DUG n -> String -> IO ()
-> dug2dot d fName = do
+> dug2dot d s = dug2dot' d pprintNode pprintEdge s
+
+> dug2dot' :: DUG n -> (Node n -> String) -> (Edge -> String) -> String -> IO ()
+> dug2dot' d fN fE fName = do
 >   print "[dot/...] making dot..."
 >   writeFile dotName ""
 >   write "digraph G {"
 >   print "[dot/...] writing nodes..."
->   write . unlines $ [show (n ^. nodeIndex) ++ "[label=\"" ++ pprintNode n ++ "\"]"  | n <- d ^. operations]
+>   write . unlines $ [show (n ^. nodeIndex) ++ "[label=\"" ++ fN n ++ "\"]"  | n <- d ^. operations]
 >   print "[dot/...] writing edges..."
->   write . unlines $ [show (e ^. from) ++ "->" ++ show (e ^. to) ++ "[label=\"" ++ pprintEdge e ++ "\"]"  | e <- edges d]
+>   write . unlines $ [show (e ^. from) ++ "->" ++ show (e ^. to) ++ "[label=\"" ++ fE e ++ "\"]"  | e <- edges d]
 >   write "}"
 >   print "[dot/...] written dot, compiling to png..."
 >   createProcess (proc "dot" [dotName, "-Tpng", "-o", pngName])
@@ -164,32 +170,39 @@ Extracting a profile from a DUG is fairly straightforward:
           a node with another outgoing edge to another 
           operation with the same kind
 
-> extractProfile :: DUG n -> P.Profile
-> extractProfile d = P.Profile weights persistentApplicationWeights mortality
+> extractProfile :: S.Signature -> DUG n -> P.Profile
+> extractProfile s d = P.Profile weights persistentApplicationWeights mortality
 >   where
 >       argKeys = d ^. arguments & M.keysSet
 >       totalNodes = fromIntegral $ length $ d ^. operations 
 >       livingNodes = fromIntegral $ length $ filter (\n -> (n ^. nodeIndex) `St.member` argKeys) (d ^. operations)
 >       mortality = 1 - (livingNodes / totalNodes)
->       weights = (/ totalNodes) <$> countOperations d
->       persistentOpCount = persistentWeights d
->       opCount = countArguments d
->       persistentApplicationWeights = M.mapWithKey (\k a -> a / (opCount M.! k)) persistentOpCount
+>       safeDiv a b = if b == 0 then 0 else a / b
+>       weights = (`safeDiv` totalNodes) <$> countOperations s d
+>       persistentOpCount = persistentWeights s d
+>       argCounts = countArguments s d
+>       persistentApplicationWeights = M.mapWithKey (\k a -> a `safeDiv` (argCounts M.! k)) persistentOpCount
 
 > update :: Ord k => k -> (a -> a) -> a -> M.Map k a -> M.Map k a
 > update k f v m = M.insert k v' m
 >   where
 >       v' = fromMaybe v (f <$> (M.lookup k m))
 
-> countOperations :: Num a => DUG n -> M.Map String a
-> countOperations d = go (d ^. operations) (M.empty)
+> emptyMap :: Num a => S.Signature -> M.Map String a
+> emptyMap s = go (s ^. S.operations & M.keys) M.empty
+>   where
+>       go [] m = m
+>       go (s:ss) m = M.insert s 0 $ go ss m
+
+> countOperations :: Num a => S.Signature -> DUG n -> M.Map String a
+> countOperations s d = go (d ^. operations) (emptyMap s)
 >   where
 >       go [] m = m
 >       go (o:os) m = let m' = update (o ^. nodeOperation ^. S.opName) (+1) 1 m
 >                     in go os m'
 
-> countArguments :: Num a => DUG n -> M.Map String a
-> countArguments d = go (d ^. arguments & M.keys) (M.empty)
+> countArguments :: Num a => S.Signature -> DUG n -> M.Map String a
+> countArguments s d = go (d ^. arguments & M.keys) (emptyMap s)
 >   where
 >       go [] m = m
 >       go (i:is) m = let m' = update (opName d i) (+1) 1 m
@@ -203,8 +216,8 @@ Extracting a profile from a DUG is fairly straightforward:
 >       (_, S.Observer) -> False
 >       (_, _) -> True
 
-> persistentWeights :: Num a => DUG n -> M.Map String a
-> persistentWeights d = go (concat (d ^. arguments & M.elems)) M.empty
+> persistentWeights :: Num a => S.Signature -> DUG n -> M.Map String a
+> persistentWeights s d = go (concat (d ^. arguments & M.elems)) (emptyMap s)
 >   where
 >       go [] m = m
 >       go (e:es) m =

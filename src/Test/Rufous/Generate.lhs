@@ -1,12 +1,13 @@
 > {-# LANGUAGE StandaloneDeriving, ExistentialQuantification, TemplateHaskell #-}
 > module Test.Rufous.Generate where
 >
-> import Control.Lens (makeLenses, makePrisms, (^.), (&), (%~), (.~))
+> import Control.Lens (makeLenses, (^.), (&), (%~), (.~))
 > import Test.QuickCheck as QC
 > import Control.Exception
-> import Data.Maybe (fromJust)
+> import Data.Maybe (fromJust, fromMaybe)
 > import Data.List (intercalate)
 > import Data.Dynamic
+> import System.IO.Unsafe
 > import qualified Data.Map as M
 > import qualified Data.Set as St
 >
@@ -30,7 +31,6 @@ During Generation a lot of state needs to be kept:
 
 > data BufferedArg = Abstract S.ArgType | Filled D.DUGArg
 >   deriving (Show)
-> makePrisms ''BufferedArg
 
 > data BufferedOperation =
 >   BufferedOperation 
@@ -333,15 +333,17 @@ When committed it's important to move the new node into the correct buckets:
 >       dynResult f [] = f
 >       dynResult f (a:as) = dynResult (f `dynApp` a) as
 
-> data RunResult = RunSuccess Dynamic | RunTypeFail | RunExcept E.RufousException
+> data RunResult = 
+>   forall a. (Show a, Typeable a) => 
+>   RunSuccess Dynamic a | RunTypeFail | RunExcept E.RufousException
 > runDynamic :: S.ImplType -> Dynamic -> IO RunResult
 > runDynamic (S.ImplType t) d = run t fromDynamic
 >   where
->       run :: Typeable a => a -> (Dynamic -> Maybe a) -> IO RunResult
+>       run :: (Show a, Typeable a) => a -> (Dynamic -> Maybe a) -> IO RunResult
 >       run _ f = do
 >           case f d of
 >               Nothing -> return $ RunTypeFail
->               Just r  -> catch (r `seq` return (RunSuccess d)) handleE
+>               Just r  -> catch (r `seq` return (RunSuccess d r)) handleE
 >       handleE :: E.RufousException -> IO RunResult
 >       handleE e = return $ RunExcept e
 
@@ -353,7 +355,7 @@ When committed it's important to move the new node into the correct buckets:
 >           Just shadowImpl -> do
 >               result <- runDynamic t dyn
 >               case result of
->                   RunSuccess d -> return $ HasShadow d
+>                   RunSuccess d _ -> return $ HasShadow d
 >                   RunTypeFail  -> error "type mismatch."
 >                   RunExcept e  ->
 >                       case e of
@@ -400,6 +402,13 @@ This happens before any arguments are ever chosen
 >               (Abstract (S.Version    _), True, _) -> 
 >                   St.toList $ living `St.intersection` (mutatorInfants `St.union` mutatorPersistents)
 
+
+> shadow2str :: Dynamic -> S.ImplType -> String
+> shadow2str d t = 
+>       case unsafePerformIO (runDynamic t d) of
+>           RunSuccess _ v -> show v           
+>           _              -> ""
+
 API
 ---
 
@@ -416,6 +425,26 @@ API
 >               st' <- inflateStep st
 >               st'' <- deflateStep st'
 >               go size st''
+
+
+> gendug2dot :: S.Signature -> GenDUG -> Bool -> String -> IO ()
+> gendug2dot s d b fName = 
+>   if b then
+>       D.dug2dot' d nodeLabel (const "") fName
+>   else
+>       D.dug2dot d fName
+>   where
+>       opName n = n ^. D.nodeOperation ^. S.opName
+>       nodeLabel n = 
+>           opName n
+>           ++ ": (" ++
+>           fromMaybe "" (nodeShadowMaybe n)
+>           ++ ")"
+>       nodeShadowMaybe n = do
+>           shImpl <- s ^. S.shadowImpl
+>           let shTy = snd $ (shImpl ^. S.implOperations) M.! (opName n)
+>           shDyn <- n ^. D.node ^. shadow
+>           return $ shadow2str shDyn shTy
 
 Buffer operations
 ----------------

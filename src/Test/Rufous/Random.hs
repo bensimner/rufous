@@ -16,7 +16,11 @@ chooseWeighted ws = do
             x
          else
             go ws (r - w)
-      go [] _ = error "chooseWeighted !! weights did not sum to 1"
+      go [(x, w)] r = 
+         if (abs (1 - r - w) < 0.01)
+            then x
+            else error "chooseWeighted !! weights did not sum to 1"
+      go [] r = error "choosWeighted !! no choices"
 
 chooseUniform :: S.Set a -> IO a
 chooseUniform s = do

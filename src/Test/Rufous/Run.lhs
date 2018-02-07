@@ -35,15 +35,15 @@ The output is a TimingResult for that DUG,
 > 
 >       -- the `t` is needed here to constrain the dynamic unwrap
 >       -- todo: Extract the result from the dynamic cell
->       runVersion :: Typeable t => t -> Dynamic -> (Dynamic -> Maybe t) -> IO NominalDiffTime
->       runVersion t d f = do
->           let action = (fromJust (f d)) `seq` return ()
->           ((), time) <- record action
+>       runVersion :: S.ImplType -> Dynamic -> IO NominalDiffTime
+>       runVersion t d = do
+>           let action = G.runDynamic t d
+>           (_, time) <- record action
 >           return time
 >       runAll :: [(Dynamic, S.ImplType)] -> IO [NominalDiffTime]
 >       runAll [] = return []
->       runAll ((d,S.ImplType t):vs) = do
->           time <- runVersion t d fromDynamic
+>       runAll ((d,t):vs) = do
+>           time <- runVersion t d
 >           times <- runAll vs
 >           return $ time : times
 

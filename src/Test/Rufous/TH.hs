@@ -62,13 +62,15 @@ makeRufousSpec name = do
                Just (ty, _) -> return $ AppT ty (TupleT 0)
 
          -- Finally build the Test.Rufous.Signature.Signature declaration
-         let sig = [| Signature $ops $impls (Just $(buildImpl nullImpl)) $shadow  |]
+         nullExtractDecl <- mkExtractorImpl name tyPairs nullImpl
+         let nullExtract = mkImplBuilder tyPairs nullExtractDecl
+         let sig = [| Signature $ops $impls $(buildImpl nullImpl) $(buildImpl nullExtract) $shadow  |]
          let specName = mkName $ "_" ++ (nameBase name)
          let specPat = return $ VarP specName
          ds <- [d| $specPat = $sig |]
 
          -- Return all declarations
-         return $ nullDecl : ds ++ extractorImpls
+         return $ nullDecl : nullExtractDecl : ds ++ extractorImpls
       _ -> fail "makeRufousSpec expected class name as argument"
 
 selectBuilders :: [InstanceBuilder] -> (Maybe InstanceBuilder, [InstanceBuilder])
@@ -168,7 +170,7 @@ mkExtractorImpls :: Name -> Pairs -> [InstanceBuilder] -> Q [Dec]
 mkExtractorImpls className pairs impls = sequence . map (mkExtractorImpl className pairs) $ impls
 
 mkExtractorImpl :: Name -> Pairs -> InstanceBuilder -> Q Dec
-mkExtractorImpl className pairs (instTy, _) = traceShow ("mkExtractorImpl", instTy) q
+mkExtractorImpl className pairs (instTy, _) = q
    where
       q = do
          ds <- mkExtractorImplFromPairs pairs
@@ -226,7 +228,7 @@ mkImplBuilders pairs [] = []
 mkImplBuilders pairs (inst:insts) = mkImplBuilder pairs inst : mkImplBuilders pairs insts
 
 mkImplBuilder :: Pairs -> InstanceDec -> InstanceBuilder
-mkImplBuilder pairs (InstanceD Nothing _ (AppT _ ty) []) =
+mkImplBuilder pairs (InstanceD Nothing _ (AppT _ ty) _) =
    (ty, mkImplBuilderVars ty pairs)
 
 mkImplBuilderVars :: Type -> Pairs -> [(String, Type, Type)]
