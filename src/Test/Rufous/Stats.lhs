@@ -119,6 +119,26 @@ from the orgiginal profile
 >   let diff = diffProfiles p profile
 >   return diff
 
+Experiment 1b
+-------------
+
+To dispute null hypothesis, need to know what a comparison between random profiles looks:
+    - Generate a pofile
+    - Generate another, different, profile.
+    - Compare results
+
+> experiment1b :: S.Signature -> IO ()
+> experiment1b s = do
+>   xs <- sequence $ replicate 100 (experiment1bStep s)
+>   BL.writeFile "data1b.json" (A.encode xs)
+>   print "[1B] Done."
+
+> experiment1bStep :: S.Signature -> IO Float
+> experiment1bStep s = do
+>   p <- generateProfile s
+>   p' <- generateProfile s
+>   return $ diffProfiles p p'
+
 Experiment 2
 ------------
 
@@ -132,10 +152,10 @@ It is very similiar to experiment 1 in this regard.
 >   putStrLn "[2] done"
 
 > generateDUGs :: S.Signature -> Int -> IO [(Int, NominalDiffTime)]
-> generateDUGs s n = sequence $ map (generateDUG s . (*100)) [1..(floor $ (fromIntegral n) / 100)]
+> generateDUGs s n = sequence $ map (recordGenerateDUG s . (*100)) [1..(floor $ (fromIntegral n) / 100)]
 
-> generateDUG :: S.Signature -> Int -> IO (Int, NominalDiffTime)
-> generateDUG s sz = do
+> recordGenerateDUG :: S.Signature -> Int -> IO (Int, NominalDiffTime)
+> recordGenerateDUG s sz = do
 >   print ("[2]",sz)
 >   p <- generateProfile s
 >   (_, time) <- R.record (G.makeDUG s p sz)
@@ -154,11 +174,24 @@ The experiment is straight-forward:
     - Extract output DUG profile
     - Compare to original
 
+> type Size = Int
+> type Exp3DataPoint = (P.Profile, Size, Float)
+
 > experiment3 :: S.Signature -> IO ()
 > experiment3 s = do
+>   let dataPoints = 1
+>   diffs <- sequence $ replicate dataPoints (experiment3Step s)
+>   BL.writeFile "data3.json" (A.encode diffs)
+
+> experiment3Step :: S.Signature -> IO Exp3DataPoint
+> experiment3Step s = do
 >   p <- generateProfile s 
->   d <- G.makeDUG s p 1000
+>   n <- randomRIO (1, 50)
+>   print ("[3]", n)
+>   d <- G.makeDUG s p n
 >   (_, extractedDUG) <- E.extract s (R.runDUG (s ^. S.nullExtractorImpl) d)
+>   putStrLn (D.pprintDUG extractedDUG)
 >   let p' = D.extractProfile s extractedDUG
 >   let diff = diffProfiles p p'
->   BL.writeFile "data3.json" (A.encode [diff])
+>   return (p, n, diff)
+
