@@ -229,3 +229,9 @@ Extracting a profile from a DUG is fairly straightforward:
 >               then update name (+1) 1 m
 >               else update name (+0) 0 m
 >           in go es m'
+
+> instance Functor DUG where
+>   fmap f d = d & operations %~ map (fmap f)
+
+> instance Functor Node where
+>   fmap f n = n & node %~ f

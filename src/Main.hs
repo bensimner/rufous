@@ -36,13 +36,13 @@ p =
 
 class QueueADT q where
    snoc :: a -> q a -> q a
-   empty :: q a
+   empty :: Int -> q a
    head' :: q a -> a
    tail' :: q a -> q a
 
 instance QueueADT [] where
    snoc x xs = xs ++ [x]
-   empty = []
+   empty _ = []
    head' = head
    tail' = tail
 
@@ -55,7 +55,7 @@ instance Show (Shadow x) where
 
 instance QueueADT Shadow where
    snoc x (Shadow q) = Shadow (q + 1)
-   empty = Shadow 0
+   empty _ = Shadow 0
 
    tail' (Shadow 0) = throw GuardFailed
    tail' (Shadow q) = Shadow (q - 1)
@@ -67,7 +67,7 @@ makeRufousSpec ''QueueADT
 
 example_program :: IO ()
 example_program = do
-   let q0 = (empty :: WrappedADT [] Int)
+   let q0 = (empty 1 :: WrappedADT [] Int)
    let q1 = snoc 1 q0
    print $ head' q1
    let q2 = snoc 2 q1
@@ -75,15 +75,25 @@ example_program = do
    print $ head' (tail' q2)
    print $ head' (tail' q3)
 
-main_generate :: IO ()
-main_generate = do
-   dug <- makeDUG _QueueADT p 5000
-   --gendug2dot _QueueADT dug False "tmp"
+main_generate :: Int -> IO ()
+main_generate size = do
+   dug <- makeDUG _QueueADT p size
+   gendug2dot _QueueADT dug False "tmp"
    --gendug2dot _QueueADT dug True "tmp2"
-   tr <- runDUG ((_QueueADT ^. implementations) !! 0) dug
-   nimp <- runDUG (_QueueADT ^. nullImpl) dug
-   putStrLn $ "Time " ++ show (sum tr - sum nimp)
+   tr <- runDUG [(_QueueADT ^. implementations) !! 0] dug
+   nimp <- runDUG [_QueueADT ^. nullImpl] dug
+   putStrLn $ "Null time: " ++ show (runTime nimp)
+   putStrLn $ "Time " ++ show (runTime tr - runTime nimp)
 
+main_generate_and_extract :: Int -> IO ()
+main_generate_and_extract size = do
+   dug <- makeDUG _QueueADT p size
+   gendug2dot _QueueADT dug False "tmp"
+   (tr, outDug) <- extract _QueueADT $ runDUG [_QueueADT ^. nullExtractorImpl] dug
+   D.dug2dot outDug "tmp2"
+   tr' <- runDUG [_QueueADT ^. nullImpl] outDug
+   D.dug2dot' tr' (\n -> (n ^. D.node & snd & show)) (const "") "tmp3"
+   putStrLn $ "Time " ++ show (runTime tr)
 
 main_experiment :: IO ()
 main_experiment = do
@@ -100,4 +110,4 @@ main_extract = do
    D.dug2dot (dug) ("tmp")
    print $ D.extractProfile _QueueADT dug
 
-main = main_experiment
+main = main_generate_and_extract 10

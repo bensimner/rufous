@@ -3,6 +3,8 @@
 > import Control.Lens
 > import Data.Dynamic
 
+> import Debug.Trace
+
 > import Data.Time.Clock
 > import Data.Maybe
 
@@ -15,25 +17,43 @@
 To "run" a DUG is simple:
     + given a DUG with a list of operations, create a list of versions
 
-The output is a TimingResult for that DUG,
- 
-> type TimingValues = [NominalDiffTime]
+The output is an annotated DUG of timing values.
 
-> runDUG :: S.Implementation -> D.DUG a -> IO TimingValues
-> runDUG impl dug = runAll versionActions
+Each node then gets annotated with a timing result for each implementation:
+
+> type TimingValue = [NominalDiffTime]
+> type TimingDug a = D.DUG (a, TimingValue)
+
+To tag the nodes in the DUG:
+
+> emptyImplDug :: D.DUG a -> TimingDug a
+> emptyImplDug d = flip (,) [] <$> d
+
+> tagDugTimes :: TimingDug a -> [NominalDiffTime] -> TimingDug a
+> tagDugTimes d times = d & D.operations .~ unpairs
+>   where pairs = d ^. D.operations
+>         pairs' = zip times pairs
+>         unpairs = map unpair pairs'
+>         unpair (t, n) = n & D.node %~ (\(a, b) -> (a, b ++ [t]))
+
+
+> runDUG :: [S.Implementation] -> D.DUG a -> IO (TimingDug a)
+> runDUG impls dug = updateDug impls (emptyImplDug dug)
 >   where
->       versionActions :: [(Dynamic, S.ImplType)]
->       versionActions = do
->           (i, node) <- map (\x -> (x ^. D.nodeIndex, x)) (dug ^. D.operations)
->           let opName = node ^. D.nodeOperation ^. S.opName
->           let dynArgs = do
->               arg <- node ^. D.nodeArgs
->               case arg of
->                   S.Version k    -> return $ ((versionActions !! k) & fst)
->                   S.NonVersion (S.IntArg k) -> return $ toDyn k
->                   S.NonVersion (S.BoolArg b) -> return $ toDyn b
->                   S.NonVersion (S.VersionParam k) -> return $ toDyn (k :: Int)
->           return $ G.runNode impl opName dynArgs
+>       versionNodes :: S.Implementation -> [(Dynamic, S.ImplType)]
+>       versionNodes impl = versions
+>           where 
+>               versions = do
+>                   (i, node) <- map (\x -> (x ^. D.nodeIndex, x)) (dug ^. D.operations)
+>                   let opName = node ^. D.nodeOperation ^. S.opName
+>                   let dynArgs = do
+>                       arg <- node ^. D.nodeArgs
+>                       case arg of
+>                           S.Version k    -> return $ ((versions !! k) & fst)
+>                           S.NonVersion (S.IntArg k) -> return $ toDyn k
+>                           S.NonVersion (S.BoolArg b) -> return $ toDyn b
+>                           S.NonVersion (S.VersionParam k) -> return $ toDyn (k :: Int)
+>                   return $ G.runNode impl opName dynArgs
 > 
 >       -- the `t` is needed here to constrain the dynamic unwrap
 >       -- todo: Extract the result from the dynamic cell
@@ -48,6 +68,10 @@ The output is a TimingResult for that DUG,
 >           time <- runVersion t d
 >           times <- runAll vs
 >           return $ time : times
+>       updateDug [] d = return d
+>       updateDug (impl:impls) d = do
+>           times <- runAll (versionNodes impl)
+>           updateDug impls (tagDugTimes d times)
 
 Time recording functions
 ------------------------
@@ -60,25 +84,11 @@ Time recording functions
 >    let d = diffUTCTime t2 t1
 >    return (y, d)
 
-Example:
-operations = M.fromList [("snoc", toDyn (snoc :: Int -> [Int] -> [Int])), ("empty", toDyn (empty :: [Int]))]
+Time information extracting functions
+-------------------------------------
 
-dyns :: [Dynamic]
-dyns = [operations M.! "empty"]
 
-data Ty = forall t. Typeable t => Ty { _typ :: t }
-
-versionTy :: Ty
-versionTy = Ty (undefined :: [Int])
-
--- Tries to run `snoc 3 (VERSION 0)`
-run :: [Dynamic] -> [Dynamic]
-run ds = ds ++ [(operations M.! "snoc") `dynApp` (args !! 0) `dynApp` (args !! 1)]
-   where
-      args = [toDyn (3 :: Int), ds !! 0]
-
-evalD :: Ty -> Dynamic -> Float
-evalD (Ty t) d = (ev t fromDynamic) `seq` 3.0
-   where
-      ev :: Typeable t => t -> (Dynamic -> Maybe t) -> ()
-      ev t f = (f d) `seq` ()
+> -- extracts the total (wall-clock) time the DUG took to execute
+> runTime :: TimingDug a -> NominalDiffTime
+> runTime d = sum times
+>   where times = [n ^. D.node & snd & sum | n <- d ^. D.operations]

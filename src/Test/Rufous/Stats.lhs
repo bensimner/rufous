@@ -189,7 +189,7 @@ The experiment is straight-forward:
 >   n <- randomRIO (1, 50)
 >   print ("[3]", n)
 >   d <- G.makeDUG s p n
->   (_, extractedDUG) <- E.extract s (R.runDUG (s ^. S.nullExtractorImpl) d)
+>   (_, extractedDUG) <- E.extract s (R.runDUG [s ^. S.nullExtractorImpl] d)
 >   putStrLn (D.pprintDUG extractedDUG)
 >   let p' = D.extractProfile s extractedDUG
 >   let diff = diffProfiles p p'
