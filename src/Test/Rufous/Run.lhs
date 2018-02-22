@@ -19,18 +19,20 @@ The output is a TimingResult for that DUG,
  
 > type TimingValues = [NominalDiffTime]
 
-> runDUG :: S.Implementation -> G.GenDUG -> IO TimingValues
+> runDUG :: S.Implementation -> D.DUG a -> IO TimingValues
 > runDUG impl dug = runAll versionActions
 >   where
 >       versionActions :: [(Dynamic, S.ImplType)]
 >       versionActions = do
->           (i, node) <- zip [0..] $ dug ^. D.operations
+>           (i, node) <- map (\x -> (x ^. D.nodeIndex, x)) (dug ^. D.operations)
 >           let opName = node ^. D.nodeOperation ^. S.opName
 >           let dynArgs = do
 >               arg <- node ^. D.nodeArgs
 >               case arg of
->                   S.Version i    -> return $ ((versionActions !! i) & fst)
->                   S.NonVersion k -> return $ toDyn (k :: Int)
+>                   S.Version k    -> return $ ((versionActions !! k) & fst)
+>                   S.NonVersion (S.IntArg k) -> return $ toDyn k
+>                   S.NonVersion (S.BoolArg b) -> return $ toDyn b
+>                   S.NonVersion (S.VersionParam k) -> return $ toDyn (k :: Int)
 >           return $ G.runNode impl opName dynArgs
 > 
 >       -- the `t` is needed here to constrain the dynamic unwrap

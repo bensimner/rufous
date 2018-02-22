@@ -8,7 +8,7 @@
 > import Data.Maybe (fromMaybe)
 > import System.Process
 > import Data.List (intercalate)
-> 
+
 > import Test.Rufous.Random
 > import qualified Test.Rufous.Signature as S
 > import qualified Test.Rufous.Profile as P
@@ -21,7 +21,7 @@ and edges are the arguments.
 
 The usual node/edge types are simple:
 
-> type DUGArg = S.Arg Int Int
+> type DUGArg = S.Arg Int Int Int Bool 
 > data Node n =
 >   Node 
 >       { _nodeOperation :: S.Operation
@@ -134,7 +134,9 @@ For debugging a pretty-printing function is defined:
 
 > pprintDArg :: DUGArg -> String 
 > pprintDArg (S.Version i) = "v" ++ show i
-> pprintDArg (S.NonVersion i) = show i
+> pprintDArg (S.NonVersion (S.VersionParam i)) = show i
+> pprintDArg (S.NonVersion (S.IntArg i)) = show i
+> pprintDArg (S.NonVersion (S.BoolArg i)) = show i
 
 and conversion to GraphViz:
 

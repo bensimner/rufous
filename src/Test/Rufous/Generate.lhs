@@ -8,6 +8,7 @@
 > import Data.List (intercalate)
 > import Data.Dynamic
 > import System.IO.Unsafe
+
 > import qualified Data.Map as M
 > import qualified Data.Set as St
 >
@@ -242,18 +243,26 @@ arguments in an infinite loop!
 >       Filled x    -> return $ Nothing
 >       Abstract at -> case at of
 >           S.Version _    -> chooseVersionArg    bop nodeChoices at st
->           S.NonVersion _ -> chooseNonVersionArg bop nodeChoices at st
+>           S.NonVersion a -> chooseNonVersionArg bop nodeChoices at st
 >   case arg of
 >       Nothing     -> return barg
 >       Just update -> return (Filled update)
 
-> chooseNonVersionArg :: BufferedOperation -> [BufferedNode] -> S.ArgType -> GenState -> IO (Maybe (S.Arg a Int))
-> chooseNonVersionArg _ _ _ _ = do
->   n <- QC.generate (QC.arbitrary)
->   return $ Just (S.NonVersion n)
+> chooseNonVersionArg :: BufferedOperation -> [BufferedNode] -> S.ArgType -> GenState -> IO (Maybe (S.Arg Int Int Int Bool))
+> chooseNonVersionArg _ _ (S.NonVersion nva) _ = do
+>   case nva of
+>       S.IntArg       _ -> do
+>           n <- QC.generate (QC.arbitrary)
+>           return $ Just (S.NonVersion (S.IntArg n))
+>       S.VersionParam _ -> do
+>           n <- QC.generate (QC.arbitrary)
+>           return $ Just (S.NonVersion (S.VersionParam n))
+>       S.BoolArg _ -> do
+>           b <- QC.generate (QC.arbitrary)
+>           return $ Just (S.NonVersion (S.BoolArg b))
 > 
 > -- TODO: 
-> chooseVersionArg :: BufferedOperation -> [BufferedNode] -> S.ArgType -> GenState -> IO (Maybe (S.Arg Int a))
+> chooseVersionArg :: BufferedOperation -> [BufferedNode] -> S.ArgType -> GenState -> IO (Maybe (S.Arg Int Int Int Bool))
 > chooseVersionArg bop nodes atype st =
 >   if not (null nodes) then do
 >       n <- QC.generate (QC.elements nodes)
@@ -342,8 +351,8 @@ When committed it's important to move the new node into the correct buckets:
 >       run :: (Show a, Typeable a) => a -> (Dynamic -> Maybe a) -> IO RunResult
 >       run _ f = do
 >           case f d of
->               Nothing -> return $ RunTypeFail
->               Just r  -> catch (r `seq` return (RunSuccess d r)) handleE
+>               Nothing -> return RunTypeFail
+>               Just r  -> catch (r `seq` return $ RunSuccess d r) handleE
 >       handleE :: E.RufousException -> IO RunResult
 >       handleE e = return $ RunExcept e
 
@@ -365,7 +374,9 @@ When committed it's important to move the new node into the correct buckets:
 >   where
 >       dynArgs = map mkDyn args
 >       mkDyn (S.Version i) = fromJust $ ((dug ^. D.operations) !! i) ^. D.node ^. shadow
->       mkDyn (S.NonVersion i) = toDyn $ i
+>       mkDyn (S.NonVersion (S.IntArg i)) = toDyn $ i
+>       mkDyn (S.NonVersion (S.BoolArg i)) = toDyn $ i
+>       mkDyn (S.NonVersion (S.VersionParam i)) = toDyn $ i
 >       -- the fromJust here is safe -- it only gets evaluated in the `just` branch above
 >       (dyn, t) = runNode (fromJust impl) (op ^. S.opName) dynArgs
 >

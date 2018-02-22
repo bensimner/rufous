@@ -1,6 +1,7 @@
 > module Test.Rufous.Extract where
 
 > import Control.Lens ((&), (^.), (%~))
+> import Data.List (sortOn)
 
 DUG Extraction is non-trivial, and there are a few problems to consider:
     - Automation
@@ -36,7 +37,7 @@ Then, the code only has be to re-written to use the implementation-ambiguous int
 
 > import System.IO.Unsafe
 > import Unsafe.Coerce
-> import Data.IORef
+> import Control.Concurrent.MVar
 > import System.Random
 
 Actually generating the fresh IDs and logging the versions is tricky to do in a type-safe way, and forcing the end-user to wrap 
@@ -52,7 +53,7 @@ that pretends it's pure -- this also caches the value of the fresh id for us.
 A wrapped node stores the current node id and the list of nodes used to construct it 
 (the incoming edges in the DUG)
 
-> type ExtractArg t x = S.Arg (WrappedADT t x) x
+> type ExtractArg t x = S.Arg (WrappedADT t x) x Int Bool
 > type ExtractedDUG = D.DUG ()
 > data WrappedADT t x =
 >   WrappedADT 
@@ -68,56 +69,43 @@ A wrapped node stores the current node id and the list of nodes used to construc
 >   Right x -> x
 >   Left _  -> error "getVersion :: expected Right"
 
-> idCounter :: IORef Int
-> idCounter = unsafePerformIO $ newIORef (0 :: Int)
-> {-# NOINLINE idCounter #-}
-
-> freshId :: IO Int
-> freshId = do
->   x <- readIORef idCounter
->   writeIORef idCounter (x + 1)
->   return x
-
 During extraction, some global state must be maintained
 
 > data ExtractorState t x = 
 >   ExtractorState 
 >       { nodes :: M.Map Int (WrappedADT t x)
+>       , currentIndex :: Int
 >       }
 
 > emptyExtractorState :: ExtractorState t x 
-> emptyExtractorState = ExtractorState M.empty
+> emptyExtractorState = ExtractorState M.empty 0
 
-> state :: IORef (ExtractorState t x)
-> state = unsafePerformIO $ newIORef emptyExtractorState
+> state :: MVar (ExtractorState t x)
+> state = unsafePerformIO $ newEmptyMVar
 > {-# NOINLINE state #-}
 
 Then a set of logging functions can update the state in an unsafe way:
 
-> addToState :: WrappedADT t x -> IO ()
-> addToState (w@(WrappedADT i _ _ _)) = do
->   st <- readIORef state
->   let st' = ExtractorState (M.insert i w (nodes st))
->   writeIORef state st'
+> updateWrapper :: String -> [ExtractArg t x] -> Either x (t x) -> IO (WrappedADT t x)
+> updateWrapper name args v = do
+>   (ExtractorState m i) <- takeMVar state
+>   let w = WrappedADT i args name v
+>   let st' = ExtractorState (M.insert i w m) (i + 1)
+>   putMVar state st'
+>   return w
 
 > _log_operation :: String -> [ExtractArg t x] -> t x -> WrappedADT t x
-> _log_operation name args v = unsafePerformIO $ do
->   _id <- freshId
->   let wrapper = WrappedADT _id args name (Right v)
->   addToState wrapper
->   return wrapper
+> _log_operation name args v = unsafePerformIO $ updateWrapper name args (Right v)
 > {-# NOINLINE _log_operation #-}
 >   
 > _log_observer :: String -> [ExtractArg t x] -> x -> x
 > _log_observer name args v = unsafePerformIO $ do
->   _id <- freshId
->   let wrapper = WrappedADT _id args name (Left v)
->   addToState wrapper
+>   updateWrapper name args (Left v)
 >   return v
 > {-# NOINLINE _log_observer #-}
 
 > extractDUG :: S.Signature -> ExtractorState t x -> ExtractedDUG
-> extractDUG s state = insertNodes (M.elems $ nodes $ state) (D.emptyDug)
+> extractDUG s state = insertNodes (sortOn nodeId (M.elems . nodes $ state)) D.emptyDug
 >   where
 >       insertNodes :: [WrappedADT t x] -> ExtractedDUG -> ExtractedDUG
 >       insertNodes [] d = d
@@ -126,16 +114,19 @@ Then a set of logging functions can update the state in an unsafe way:
 >       insertNode w d = d & D.insertOp (D.Node (getOp w) (getArgs w) (nodeId w) ())
 >       getOp w = (s ^. S.operations) M.! (nodeOp w)
 >       getArgs w = map getArg (nodeArgs w)
+>       getArg :: ExtractArg t x -> S.Arg Int Int Int Bool
 >       getArg (S.Version w) = S.Version (nodeId w)
->       getArg (S.NonVersion a) = S.NonVersion (unsafeCoerce a :: Int)  -- TODO: better handling of non-version args
+>       getArg (S.NonVersion (S.VersionParam a)) = S.NonVersion (S.VersionParam (unsafeCoerce a :: Int))  -- force instantiation to Int
+>       getArg (S.NonVersion (S.IntArg a)) = S.NonVersion (S.IntArg a)
+>       getArg (S.NonVersion (S.BoolArg a)) = S.NonVersion (S.BoolArg a)
 
 > init_state :: IO ()
 > init_state = do
->   writeIORef state emptyExtractorState
+>   putMVar state emptyExtractorState
 
 > read_state :: S.Signature -> IO (ExtractedDUG)
 > read_state s = do
->   extractor_state <- readIORef state
+>   extractor_state <- takeMVar state
 >   let dug = extractDUG s extractor_state
 >   return dug
 

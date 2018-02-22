@@ -15,8 +15,11 @@ The `Signature' type describes that API
 > data Null x = NullImpl
 >   deriving (Show, Eq, Typeable)
 >
-> type ArgType = Arg () String
-> data Arg v n = Version v | NonVersion n
+> type ArgType = Arg () () () ()
+> data NVA n i b = VersionParam n | IntArg i | BoolArg b
+>   deriving (Eq, Show)
+>
+> data Arg v n i b = Version v | NonVersion (NVA n i b)
 >   deriving (Eq, Show)
 >
 > data OperationType = Mutator | Observer | Generator

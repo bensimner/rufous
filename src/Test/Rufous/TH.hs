@@ -5,7 +5,6 @@ import Control.Lens ((^.), _1)
 import qualified Data.Map as M
 
 import Data.List (isPrefixOf)
-import Debug.Trace
 import Data.Dynamic (toDyn)
 
 import Language.Haskell.TH
@@ -103,7 +102,12 @@ argFromType :: Type -> ArgType
 argFromType ty =
    case ty of
       AppT (VarT ctorName) (VarT varName) -> Version ()
-      VarT name -> NonVersion (showName name)
+      ConT name -> 
+         case showName name of
+            "GHC.Types.Int" -> NonVersion (IntArg ())
+            "GHC.Types.Bool" -> NonVersion (BoolArg ())
+            nm -> error $ "argFromType :: Unexpected type constructor " ++ nm
+      VarT name -> NonVersion (VersionParam ())
       x -> error $ "argFromType :: Unexpected value " ++ show x
 
 expsToExp :: [Q Exp] -> Q Exp
@@ -117,7 +121,9 @@ pairToQ :: (String, [ArgType]) -> Q Exp
 pairToQ (name, args) = do 
    let var = return $ LitE $ StringL name
    let mkArg (Version ()) = [| Version () |]
-       mkArg (NonVersion x) = [| NonVersion $(return $ LitE $ StringL x) |]
+       mkArg (NonVersion (VersionParam _)) = [| NonVersion (VersionParam ()) |]
+       mkArg (NonVersion (IntArg _)) = [| NonVersion (IntArg ()) |]
+       mkArg (NonVersion (BoolArg _)) = [| NonVersion (BoolArg ()) |]
    let mkArgs []     = [| [] |] 
        mkArgs (x:xs) = [| $(mkArg x) : $(mkArgs xs) |]
    let (args', classify, retArg') = (mkArgs (init args), classifyArgs args, mkArg (last args))
@@ -155,7 +161,7 @@ mkNullImplFromPair (name, args) = do
       impl <- [| throw NotImplemented |]
       return  $ [FunD name' [Clause patterns (NormalB $ impl) []]]
 
-mkPats :: [ArgType] -> [(Pat, Arg Name Name)]
+mkPats :: [ArgType] -> [(Pat, Arg Name Name Name Name)]
 mkPats ats = go ats 0
    where
       go [] _ = []
@@ -164,7 +170,9 @@ mkPats ats = go ats 0
          in (VarP name', mkArg arg name') : go args (k + 1)
       name k = "x" ++ show k
       mkArg (Version _) name = Version name
-      mkArg (NonVersion _) name = NonVersion name
+      mkArg (NonVersion (VersionParam _)) name = NonVersion (VersionParam name)
+      mkArg (NonVersion (IntArg _)) name = NonVersion (IntArg name)
+      mkArg (NonVersion (BoolArg _)) name = NonVersion (BoolArg name)
 
 mkExtractorImpls :: Name -> Pairs -> [InstanceBuilder] -> Q [Dec]
 mkExtractorImpls className pairs impls = sequence . map (mkExtractorImpl className pairs) $ impls
@@ -200,22 +208,27 @@ mkExtractorImplFromPair (name, args) = do
       impl' <- [| _log_operation $nameLit $versionsExp $call |] 
       return $ [FunD name' [Clause pats (NormalB $ impl') []]]
 
-buildCall :: Name -> [(Pat, Arg Name Name)] -> Q Exp
+buildCall :: Name -> [(Pat, Arg Name Name Name Name)] -> Q Exp
 buildCall n xs = go xs [| $(return $ VarE n) |]
    where
       go [] f = f
       go ((_, arg) : cs) f = go cs [| $f $(mkArg arg) |]
       mkArg (Version v) = [| getVersion $(return $ VarE $ v) |]
-      mkArg (NonVersion v) = [| $(return $ VarE $ v) |]
+      mkArg (NonVersion (VersionParam v)) = [| $(return $ VarE $ v) |]
+      mkArg (NonVersion (IntArg v)) = [| $(return $ VarE $ v) |]
+      mkArg (NonVersion (BoolArg v)) = [| $(return $ VarE $ v) |]
+      mkArg (NonVersion v) = error $ "buildCall :: got unexpected mkArg arg"
 
 
-patsToVersions :: [(Pat, Arg Name Name)] -> [Q Exp]
+patsToVersions :: [(Pat, Arg Name Name Name Name)] -> [Q Exp]
 patsToVersions xs = do
    (VarP n, a) <- xs
    let ne = return $ VarE n
    case a of
       Version n    -> return [| Version $ne |]
-      NonVersion n -> return [| NonVersion $ne |]
+      NonVersion (VersionParam n) -> return [| NonVersion (VersionParam $ne) |]
+      NonVersion (IntArg n) -> return [| NonVersion (IntArg $ne) |]
+      NonVersion (BoolArg n) -> return [| NonVersion (BoolArg $ne) |]
 
 isShadowImpl :: InstanceBuilder -> Bool
 isShadowImpl (ty, _) = 
