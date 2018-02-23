@@ -18,6 +18,7 @@ import Test.Rufous.Profile
 import Test.Rufous.Run
 import Test.Rufous.Extract
 import Test.Rufous.Stats
+import Test.Rufous.Select
 import Control.Exception
 import Test.Rufous.Exceptions
 
@@ -92,7 +93,7 @@ main_generate_and_extract size = do
    (tr, outDug) <- extract _QueueADT $ runDUG [_QueueADT ^. nullExtractorImpl] dug
    D.dug2dot outDug "tmp2"
    tr' <- runDUG [_QueueADT ^. nullImpl] outDug
-   D.dug2dot' tr' (\n -> (n ^. D.node & snd & show)) (const "") "tmp3"
+   D.dug2dot' tr' (\n -> (n ^. D.node & snd & map snd & show)) (const "") "tmp3"
    putStrLn $ "Time " ++ show (runTime tr)
 
 main_experiment :: IO ()
@@ -110,4 +111,14 @@ main_extract = do
    D.dug2dot (dug) ("tmp")
    print $ D.extractProfile _QueueADT dug
 
-main = main_generate_and_extract 10
+main_select :: Int -> IO ()
+main_select size = do
+   p <- generateProfile _QueueADT
+   dug <- makeDUG _QueueADT p size
+   --gendug2dot _QueueADT dug False "tmp"
+   runDug <- runDUG [_QueueADT ^. nullImpl] dug
+   --D.dug2dot' runDug (\n -> (n ^. D.node & snd & map snd & show)) (const "") "tmp3"
+   putStrLn $ "Time " ++ show (runTime runDug)
+   selectDug _QueueADT [runDug]
+
+main = main_select 10

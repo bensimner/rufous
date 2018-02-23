@@ -235,3 +235,9 @@ Extracting a profile from a DUG is fairly straightforward:
 
 > instance Functor Node where
 >   fmap f n = n & node %~ f
+
+> foldDug :: (Node a -> b -> b) -> b -> DUG a -> b
+> foldDug f v d = folder v (d ^. operations)
+>   where
+>       folder b [] = b
+>       folder b (node:nodes) = f node (folder b nodes)

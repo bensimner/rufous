@@ -28,10 +28,11 @@ The `Signature' type describes that API
 > data ImplType = forall t. (Show t, Typeable t) => ImplType t
 > data Implementation = 
 >   Implementation
->       { _implOperations :: M.Map String (Dynamic, ImplType)
+>       { _implName :: String
+>       , _implOperations :: M.Map String (Dynamic, ImplType)
 >       }
 > instance Show Implementation where
->   show (Implementation m) = show (fst <$> m)
+>   show (Implementation impl _) = "<" ++ impl ++ ">"
 > makeLenses ''Implementation
 > 
 > data OperationSig =

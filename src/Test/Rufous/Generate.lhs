@@ -11,7 +11,7 @@
 
 > import qualified Data.Map as M
 > import qualified Data.Set as St
->
+
 > import qualified Test.Rufous.DUG as D
 > import qualified Test.Rufous.Signature as S
 > import qualified Test.Rufous.Profile as P

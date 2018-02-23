@@ -21,7 +21,7 @@ The output is an annotated DUG of timing values.
 
 Each node then gets annotated with a timing result for each implementation:
 
-> type TimingValue = [NominalDiffTime]
+> type TimingValue = [(S.Implementation, NominalDiffTime)]
 > type TimingDug a = D.DUG (a, TimingValue)
 
 To tag the nodes in the DUG:
@@ -29,7 +29,7 @@ To tag the nodes in the DUG:
 > emptyImplDug :: D.DUG a -> TimingDug a
 > emptyImplDug d = flip (,) [] <$> d
 
-> tagDugTimes :: TimingDug a -> [NominalDiffTime] -> TimingDug a
+> tagDugTimes :: TimingDug a -> [(S.Implementation, NominalDiffTime)] -> TimingDug a
 > tagDugTimes d times = d & D.operations .~ unpairs
 >   where pairs = d ^. D.operations
 >         pairs' = zip times pairs
@@ -71,7 +71,8 @@ To tag the nodes in the DUG:
 >       updateDug [] d = return d
 >       updateDug (impl:impls) d = do
 >           times <- runAll (versionNodes impl)
->           updateDug impls (tagDugTimes d times)
+>           let implTimes = map ((,) impl) times
+>           updateDug impls (tagDugTimes d implTimes)
 
 Time recording functions
 ------------------------
@@ -91,4 +92,4 @@ Time information extracting functions
 > -- extracts the total (wall-clock) time the DUG took to execute
 > runTime :: TimingDug a -> NominalDiffTime
 > runTime d = sum times
->   where times = [n ^. D.node & snd & sum | n <- d ^. D.operations]
+>   where times = [n ^. D.node & snd & map snd & sum | n <- d ^. D.operations]

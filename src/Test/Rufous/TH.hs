@@ -258,7 +258,8 @@ buildImpls [] = [| [] |]
 buildImpls (impl:impls) = [| $(buildImpl impl) : $(buildImpls impls) |]
 
 buildImpl :: InstanceBuilder -> Q Exp
-buildImpl (ctorTy, pairs) = [| Implementation (M.fromList $(buildImplPairs pairs)) |]
+buildImpl (conTy, pairs) = [| Implementation $(ctorNameStr) (M.fromList $(buildImplPairs pairs)) |]
+   where ctorNameStr = return $ LitE $ StringL (userfriendlyTypeString conTy)
 
 buildImplPairs :: [(String, Type, Type)] -> Q Exp
 buildImplPairs [] = [| [] |]
@@ -281,3 +282,7 @@ argTysToType ty (aty:tys) = AppT (AppT ArrowT (aTypeToType ty aty)) (argTysToTyp
 aTypeToType :: Type -> ArgType -> Type
 aTypeToType ty (Version ()) = AppT ty (ConT (mkName "Int"))
 aTypeToType ty (NonVersion x) = ConT (mkName "Int")
+
+userfriendlyTypeString :: Type -> String
+userfriendlyTypeString (ConT name) = showName name
+userfriendlyTypeString t = show t
