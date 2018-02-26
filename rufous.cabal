@@ -15,10 +15,20 @@ build-type:          Simple
 extra-source-files:  ChangeLog.md
 cabal-version:       >=1.10
 
-executable rufous
-  main-is:             Main.hs
-  -- other-modules:       
-  -- other-extensions:    
+library
+  exposed-modules:     Test.Rufous
+                       , Test.Rufous.DUG
+                       , Test.Rufous.Profile
+                       , Test.Rufous.Signature
+                       , Test.Rufous.Extract
+                       , Test.Rufous.Generate
+                       , Test.Rufous.Run
+                       , Test.Rufous.Select
+                       , Test.Rufous.Exceptions
+                       , Test.Rufous.Random
+                       , Test.Rufous.TH
+                       , Test.Rufous.Stats
+
   build-depends:       base >=4.9 && <4.10
                        , random, containers, process
                        , aeson, time, bytestring, lens

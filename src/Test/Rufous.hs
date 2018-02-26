@@ -3,6 +3,7 @@ module Test.Rufous(
      runRufous
    , runRufousWithOptions
    , RufousOptions(..)
+   , defaultOptions
 
    -- Datatypes
    , S.Signature
@@ -57,7 +58,7 @@ data RufousOptions =
       }
    deriving (Eq, Show)
 
-defaultOptions = RufousOptions { dumpDugs=False, dumpDir="./dmp/", avgDugSize=50, numberOfTests=10 }
+defaultOptions = RufousOptions { dumpDugs=False, dumpDir="./dmp/", avgDugSize=10, numberOfTests=1 }
 
 runRufousOnDugs :: RufousOptions -> S.Signature -> [D.DUG a] -> IO ()
 runRufousOnDugs opts s dugs = do

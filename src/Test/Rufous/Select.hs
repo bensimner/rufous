@@ -1,6 +1,6 @@
 module Test.Rufous.Select where
 
-import Control.Lens ((^.), (&), _3)
+import Control.Lens ((^.), (&), _1, _2, (^..), _3)
 
 import qualified Data.Map as M
 import Data.Time.Clock
@@ -21,16 +21,29 @@ padStr c n s = s ++ replicate (n - length s) c
 -- this takes a DUG and builds the count/total time for each operation for each implementation
 printTable :: S.Signature -> R.TimingDug a -> IO ()
 printTable s dug = do
-   let table = makeTable (buildOpTimes s dug)
-   let lengths = maxLens table
-   let formatted = map (formatRow " | " table) table
-   let headerLine = formatRow " + " table [padStr '-' n "" | n <- lengths]
-   let lineLength = length $ head formatted
-   case dug ^. D.dugName of
-      Just n -> putStrLn n
-      Nothing -> return ()
+   let times = (buildOpTimes s dug)
+   let table = makeTable times
+   let noRows = length table
+   let noCols = length $ head table
+
+   let dugName = do {
+      case dug ^. D.dugName of
+         Just n -> n
+         Nothing -> ""
+      }
+
+   let wrappedTable = insertCol (dugName : replicate (noRows - 1) "") table
+   let lengths = maxLens wrappedTable
+
+   let formatted = map (formatRow " | " wrappedTable) wrappedTable
+
+   let headerLine = formatRow " + " wrappedTable [padStr '-' n "" | n <- lengths]
    putStrLn $ unlines (head formatted : headerLine : tail formatted)
    putStrLn ""
+
+insertCol :: [String] -> [[String]] -> [[String]]
+insertCol [] [] = []
+insertCol (rc:rcs) (r:rs) = (rc:r) : insertCol rcs rs
 
 formatRow :: String -> [[String]] -> [String] -> String
 formatRow sep table row = concat (intersperse sep padded)
@@ -71,14 +84,14 @@ emptyOpTimes s d = M.fromList [(name o, (name o, 0, emptyImplTimes d)) | o <- s 
 
 emptyImplTimes :: R.TimingDug a -> ImplementationTimes
 emptyImplTimes d = M.fromList [(i ^. S.implName, 0) | i <- impls]
-   where n = (d ^. D.operations) !! 0
-         impls = map fst (snd (n ^. node))
+   where firstNode = (d ^. D.operations) !! 0
+         impls = firstNode ^.. D.node . _2 . traverse . _1
 
 buildOpTimes :: S.Signature -> R.TimingDug a -> OperationTimes
 buildOpTimes s d = D.foldDug updateNode (emptyOpTimes s d) d
 
-updateNode :: D.Node (a, R.TimingValue) -> OperationTimes -> OperationTimes
-updateNode n = M.adjust (\(s, c, im) -> (s, c+1, foldr updateImpl im impls)) (n ^. D.nodeOperation ^. S.opName)
+updateNode :: OperationTimes -> D.Node (a, R.TimingValue) -> OperationTimes
+updateNode times n = M.adjust (\(s, c, im) -> (s, c+1, foldr updateImpl im impls)) (n ^. D.nodeOperation ^. S.opName) times
    where (_, impls) = n ^. D.node
 
 updateImpl :: (S.Implementation, NominalDiffTime) -> ImplementationTimes -> ImplementationTimes
