@@ -44,12 +44,12 @@ To tag the nodes in the DUG:
 >                   (i, node) <- map (\x -> (x ^. D.nodeIndex, x)) (dug ^. D.operations)
 >                   let opName = node ^. D.nodeOperation ^. S.opName
 >                   let dynArgs = do
->                       arg <- node ^. D.nodeArgs
->                       case arg of
->                           S.Version k    -> return $ ((versions !! k) & fst)
->                           S.NonVersion (S.IntArg k) -> return $ toDyn k
->                           S.NonVersion (S.BoolArg b) -> return $ toDyn b
->                           S.NonVersion (S.VersionParam k) -> return $ toDyn (k :: Int)
+>                                 arg <- node ^. D.nodeArgs
+>                                 case arg of
+>                                     S.Version k    -> return $ ((versions !! k) & fst)
+>                                     S.NonVersion (S.IntArg k) -> return $ toDyn k
+>                                     S.NonVersion (S.BoolArg b) -> return $ toDyn b
+>                                     S.NonVersion (S.VersionParam k) -> return $ toDyn (k :: Int)
 >                   return $ G.runNode impl opName dynArgs
 > 
 >       -- the `t` is needed here to constrain the dynamic unwrap
@@ -89,20 +89,22 @@ Time information extracting functions
 > subDug impls d = subTimingValues impls <$> d
 
 > subTimingValues :: [S.Implementation] -> (a, TimingValue) -> (a, TimingValue)
-> subTimingValues impls t = t & _2 %~ filter (\v -> (v ^. _1) `elem` impls)
+> subTimingValues impls t = t & _2 %~ filter f
+>   where
+>       f v = (v ^. _1) `elem` impls
 
 > diffDugs :: TimingDug a -> TimingDug a -> TimingDug a
 > diffDugs a b = newA
->   where times = ((b ^. D.operations ^.. traverse . D.node . _2) !! 0) ^.. traverse . _2
->         times :: [NominalDiffTime]
->         newA  = a & D.operations . traverse . D.node . _2 %~ (map f . zip times)
->         f (t, a) = a & _2 %~ (\x -> x - t)
+>   where times = b ^.. D.operations . traverse . D.node . _2 . ix 0 ^.. traverse . _2
+>         zippedOps  = zip times (a ^. D.operations)
+>         newA  = a & D.operations .~ map f zippedOps
+>         f (t, n) = n & D.node . _2 . traverse . _2 %~ (\x -> x - t)
 
 > -- remove overhead from null impl
 > normaliseDug :: S.Signature -> TimingDug a -> TimingDug a
 > normaliseDug s d = diffDugs remDug nullDug
 >   where nullDug = subDug [s ^. S.nullImpl] d
->         remDug  = subDug (dugImpls d) d
+>         remDug = subDug (dugImpls d) d
 
 > dugImpls :: TimingDug a -> [S.Implementation]
 > dugImpls d = firstNode ^. D.node ^. _2 ^.. traverse . _1 & tail  -- remove the first (the Null Impl)
