@@ -6,6 +6,7 @@
 > import Control.Exception
 > import Data.Maybe (fromJust, fromMaybe)
 > import Data.List (intercalate)
+
 > import Data.Dynamic
 > import System.IO.Unsafe
 
@@ -114,9 +115,14 @@ Pipeline
 
 Now the pipeline has multiple stages, starting from the empty DUG and empty state:
 
+> generateFreshDugName :: () -> Maybe String
+> generateFreshDugName() = unsafePerformIO $ do
+>   n <- QC.generate (QC.arbitrary)
+>   return $ Just $ "dug" ++ (show (n :: Int))
+
 > emptyState :: S.Signature -> P.Profile -> GenState
 > emptyState s p = GenState 
->   { _dug=D.emptyDug
+>   { _dug=D.emptyDug & D.dugName .~ generateFreshDugName()
 >   , _buffer=[]
 >   , _sig=s
 >   , _profile=p

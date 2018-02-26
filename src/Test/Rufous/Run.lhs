@@ -3,8 +3,6 @@
 > import Control.Lens
 > import Data.Dynamic
 
-> import Debug.Trace
-
 > import Data.Time.Clock
 > import Data.Maybe
 
@@ -35,7 +33,6 @@ To tag the nodes in the DUG:
 >         pairs' = zip times pairs
 >         unpairs = map unpair pairs'
 >         unpair (t, n) = n & D.node %~ (\(a, b) -> (a, b ++ [t]))
-
 
 > runDUG :: [S.Implementation] -> D.DUG a -> IO (TimingDug a)
 > runDUG impls dug = updateDug impls (emptyImplDug dug)
@@ -88,6 +85,28 @@ Time recording functions
 Time information extracting functions
 -------------------------------------
 
+> subDug :: [S.Implementation] -> TimingDug a -> TimingDug a 
+> subDug impls d = subTimingValues impls <$> d
+
+> subTimingValues :: [S.Implementation] -> (a, TimingValue) -> (a, TimingValue)
+> subTimingValues impls t = t & _2 %~ filter (\v -> (v ^. _1) `elem` impls)
+
+> diffDugs :: TimingDug a -> TimingDug a -> TimingDug a
+> diffDugs a b = newA
+>   where times = ((b ^. D.operations ^.. traverse . D.node . _2) !! 0) ^.. traverse . _2
+>         times :: [NominalDiffTime]
+>         newA  = a & D.operations . traverse . D.node . _2 %~ (map f . zip times)
+>         f (t, a) = a & _2 %~ (\x -> x - t)
+
+> -- remove overhead from null impl
+> normaliseDug :: S.Signature -> TimingDug a -> TimingDug a
+> normaliseDug s d = diffDugs remDug nullDug
+>   where nullDug = subDug [s ^. S.nullImpl] d
+>         remDug  = subDug (dugImpls d) d
+
+> dugImpls :: TimingDug a -> [S.Implementation]
+> dugImpls d = firstNode ^. D.node ^. _2 ^.. traverse . _1 & tail  -- remove the first (the Null Impl)
+>   where firstNode = (d ^. D.operations) !! 0
 
 > -- extracts the total (wall-clock) time the DUG took to execute
 > runTime :: TimingDug a -> NominalDiffTime

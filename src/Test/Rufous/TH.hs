@@ -1,5 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
-module Test.Rufous.TH where
+module Test.Rufous.TH (makeRufousSpec) where
 
 import Control.Lens ((^.), _1)
 import qualified Data.Map as M

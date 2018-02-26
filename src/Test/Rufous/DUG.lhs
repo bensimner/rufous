@@ -44,6 +44,7 @@ The usual node/edge types are simple:
 >   DUG 
 >      { _operations :: [Node n]
 >      ,  _arguments :: M.Map Int [Edge]
+>      , _dugName :: Maybe String
 >      }
 >   deriving (Show)
 > makeLenses ''DUG
@@ -51,12 +52,12 @@ The usual node/edge types are simple:
 Initialisation and creation:
 
 > emptyDug :: DUG n
-> emptyDug = DUG [] M.empty
+> emptyDug = DUG [] M.empty Nothing
 >
 > insertEdge :: Int -> Int -> DUG n -> DUG n
-> insertEdge i j (d @ (DUG o a)) = d & arguments %~ (M.insert i edges')
+> insertEdge i j d = d & arguments %~ (M.insert i edges')
 >   where
->       edges = a M.! i
+>       edges = (d ^. arguments) M.! i
 >       edge = Edge i j
 >       edges' = edges ++ [edge]
 >

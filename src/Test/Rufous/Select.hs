@@ -12,21 +12,30 @@ import Test.Rufous.DUG as D
 import Test.Rufous.Run as R
 import Test.Rufous.Signature as S
 
-selectDug :: S.Signature -> [R.TimingDug a] -> IO ()
-selectDug sig [dug] = do
-   let table = printTable sig dug
-   table
+select :: S.Signature -> [R.TimingDug a] -> IO ()
+select sig = mapM_ (printTable sig)
 
-padStr :: Int -> String -> String
-padStr n s = s ++ replicate (n - length s) ' '
+padStr :: Char -> Int -> String -> String
+padStr c n s = s ++ replicate (n - length s) c
 
 -- this takes a DUG and builds the count/total time for each operation for each implementation
 printTable :: S.Signature -> R.TimingDug a -> IO ()
 printTable s dug = do
    let table = makeTable (buildOpTimes s dug)
-   let lens = maxLens table
-   let formatted = map (concat . intersperse " | " . map (\(i,s) -> padStr i s) . zip (maxLens table)) table
-   putStrLn $ unlines formatted
+   let lengths = maxLens table
+   let formatted = map (formatRow " | " table) table
+   let headerLine = formatRow " + " table [padStr '-' n "" | n <- lengths]
+   let lineLength = length $ head formatted
+   case dug ^. D.dugName of
+      Just n -> putStrLn n
+      Nothing -> return ()
+   putStrLn $ unlines (head formatted : headerLine : tail formatted)
+   putStrLn ""
+
+formatRow :: String -> [[String]] -> [String] -> String
+formatRow sep table row = concat (intersperse sep padded)
+   where lengths = maxLens table
+         padded = map (\(i, s) -> padStr ' ' i s) (zip lengths row)
 
 maxLens :: [[ [a] ]] -> [Int]
 maxLens ([]:_) = []

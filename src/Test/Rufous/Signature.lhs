@@ -31,9 +31,12 @@ The `Signature' type describes that API
 >       { _implName :: String
 >       , _implOperations :: M.Map String (Dynamic, ImplType)
 >       }
+> makeLenses ''Implementation
+>
 > instance Show Implementation where
 >   show (Implementation impl _) = "<" ++ impl ++ ">"
-> makeLenses ''Implementation
+> instance Eq Implementation where
+>   i1 == i2 = i1 ^. implName == i2 ^. implName
 > 
 > data OperationSig =
 >   OperationSig

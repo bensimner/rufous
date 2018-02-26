@@ -47,6 +47,14 @@ instance QueueADT [] where
    head' = head
    tail' = tail
 
+newtype QueueT a = QueueT ([a])
+   deriving (Show)
+instance QueueADT QueueT where
+   snoc x (QueueT xs) = QueueT (xs ++ [x])
+   empty _ = QueueT []
+   head' (QueueT xs) = head xs
+   tail' (QueueT xs) = QueueT (tail xs)
+
 -- A Shadow is generally a valid implementation tagged with some 
 -- additional information
 data Shadow x = Shadow Int
@@ -119,6 +127,6 @@ main_select size = do
    runDug <- runDUG [_QueueADT ^. nullImpl] dug
    --D.dug2dot' runDug (\n -> (n ^. D.node & snd & map snd & show)) (const "") "tmp3"
    putStrLn $ "Time " ++ show (runTime runDug)
-   selectDug _QueueADT [runDug]
+   select _QueueADT [runDug]
 
 main = main_select 10
