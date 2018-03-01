@@ -91,6 +91,7 @@ Time information extracting functions
 > subTimingValues :: [S.Implementation] -> (a, TimingValue) -> (a, TimingValue)
 > subTimingValues impls t = t & _2 %~ filter f
 >   where
+>       f :: (S.Implementation, NominalDiffTime) -> Bool
 >       f v = (v ^. _1) `elem` impls
 
 > diffDugs :: TimingDug a -> TimingDug a -> TimingDug a
