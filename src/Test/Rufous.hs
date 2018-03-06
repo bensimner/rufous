@@ -5,6 +5,9 @@ module Test.Rufous(
    , RufousOptions(..)
    , defaultOptions
 
+   , guardFailed
+   , shadowUndefined
+
    -- Datatypes
    , S.Signature
    , S.Implementation
@@ -34,7 +37,7 @@ import System.FilePath
 import System.Directory
 import Control.Exception
 
-import Control.Lens
+import Lens.Micro
 
 import Test.Rufous.DUG as D
 import Test.Rufous.Signature as S
@@ -47,6 +50,7 @@ import Test.Rufous.Select as Se
 
 import Test.Rufous.TH as TH
 import Test.Rufous.Stats as Stat
+import Test.Rufous.Exceptions as Ex
 
 
 data RufousOptions =
@@ -85,6 +89,10 @@ runRufousWithOptions :: RufousOptions -> S.Signature -> IO ()
 runRufousWithOptions opts s = do
    profiles <- mapM (const $ generateProfile s) [1..(numberOfTests opts)]
    runRufousOnProfiles opts s profiles
+
+
+guardFailed = throw Ex.GuardFailed
+shadowUndefined = throw Ex.NotImplemented
 
 printTimingDugs :: RufousOptions -> [R.TimingDug a] -> IO ()
 printTimingDugs o [] = return ()

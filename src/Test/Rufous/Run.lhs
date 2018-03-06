@@ -1,6 +1,7 @@
 > module Test.Rufous.Run where
 
-> import Control.Lens
+> import Lens.Micro
+> import Lens.Micro.TH
 > import Data.Dynamic
 
 > import Data.Time.Clock

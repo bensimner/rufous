@@ -1,6 +1,6 @@
 module Test.Rufous.Select where
 
-import Control.Lens ((^.), (&), _1, _2, (^..), _3)
+import Lens.Micro ((^.), (&), _1, _2, (^..), _3)
 
 import qualified Data.Map as M
 import Data.Time.Clock

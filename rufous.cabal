@@ -3,14 +3,14 @@
 
 name:                rufous
 version:             0.1.0.0
-synopsis:            Rufous!
--- description:         
+synopsis:            Straightforward data structure selection
+description:         
+    Rufous is a straightforward tool for comparing and selecting appropriate implementations of data structures.
 license:             BSD3
 license-file:        LICENSE
 author:              Ben Simner
-maintainer:          benjsimner@gmail.com
--- copyright:           
--- category:            
+maintainer:          Ben Simner <benjsimner@gmail.com>
+category:            Testing
 build-type:          Simple
 extra-source-files:  ChangeLog.md
 cabal-version:       >=1.10
@@ -31,7 +31,8 @@ library
 
   build-depends:       base >=4.9 && <4.10
                        , random, containers, process
-                       , aeson, time, bytestring, lens
+                       , aeson, time, bytestring
+                       , microlens, microlens-th
                        , QuickCheck, template-haskell
                        , filepath, directory
   hs-source-dirs:      src

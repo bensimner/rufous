@@ -3,7 +3,7 @@
 
 Collecting information for evaluation:
 
-> import Control.Lens ((^.), (&))
+> import Lens.Micro ((^.), (&))
 > import Control.Applicative
 > import Data.Time.Clock
 > import System.Random (randomRIO)

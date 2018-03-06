@@ -1,7 +1,8 @@
 > {-# LANGUAGE StandaloneDeriving, ExistentialQuantification, TemplateHaskell #-}
 > module Test.Rufous.Generate where
 >
-> import Control.Lens (makeLenses, (^.), (&), (%~), (.~))
+> import Lens.Micro ((^.), (&), (%~), (.~))
+> import Lens.Micro.TH (makeLenses)
 > import Test.QuickCheck as QC
 > import Control.Exception
 > import Data.Maybe (fromJust, fromMaybe)

@@ -4,7 +4,9 @@ The `Signature' type describes that API
 > {-# LANGUAGE StandaloneDeriving, TemplateHaskell, ExistentialQuantification #-}
 > module Test.Rufous.Signature where
 >
-> import Control.Lens
+> import Lens.Micro
+> import Lens.Micro.TH
+>
 > import Data.Dynamic (Dynamic, Typeable)
 >
 > import qualified Data.Map as M

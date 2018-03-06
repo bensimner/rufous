@@ -1,7 +1,8 @@
 > {-# LANGUAGE TemplateHaskell #-}
 > module Test.Rufous.DUG where
 > 
-> import Control.Lens (makeLenses, (^.), (%~), (&))
+> import Lens.Micro ((^.), (%~), (&))
+> import Lens.Micro.TH (makeLenses)
 >
 > import qualified Data.Map as M
 > import qualified Data.Set as St

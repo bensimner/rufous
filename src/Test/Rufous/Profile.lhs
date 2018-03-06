@@ -5,7 +5,8 @@ The `Profile' type defined in this file is one such set of statistics
 
 > module Test.Rufous.Profile where
 > 
-> import Control.Lens
+> import Lens.Micro
+> import Lens.Micro.TH
 > import qualified Data.Map as M
 > import Data.Aeson
 > import Data.String (fromString)

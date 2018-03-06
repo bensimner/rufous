@@ -1,6 +1,6 @@
 > module Test.Rufous.Extract where
 
-> import Control.Lens ((&), (^.), (%~))
+> import Lens.Micro ((&), (^.), (%~))
 > import Data.List (sortOn)
 
 DUG Extraction is non-trivial, and there are a few problems to consider:

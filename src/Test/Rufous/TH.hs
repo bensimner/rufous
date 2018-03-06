@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Test.Rufous.TH (makeRufousSpec) where
 
-import Control.Lens ((^.), _1)
+import Lens.Micro ((^.), _1)
 import qualified Data.Map as M
 
 import Data.List (isPrefixOf)
