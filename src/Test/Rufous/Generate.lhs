@@ -7,6 +7,7 @@
 > import Control.Exception
 > import Data.Maybe (fromJust, fromMaybe)
 > import Data.List (intercalate)
+> import System.Random (randomRIO)
 
 > import Data.Dynamic
 > import System.IO.Unsafe
@@ -476,3 +477,41 @@ Collection of useful operations on Buffered* types
 > isFilled :: BufferedArg -> Bool
 > isFilled (Filled _) = True
 > isFilled _          = False
+
+
+Ancillary generators
+--------------------
+
+There are also generators for a bunch of other Rufous types
+
+> generateProfile :: S.Signature -> IO P.Profile
+> generateProfile s = do
+>   mortality <- randomRIO (0.0, 1.0) 
+>   weights <- generateMapWeights (s ^. S.operations & M.keys)
+>   persistWeights <- generateMapWeights (s ^. S.operations & M.keys)
+>   return $ P.Profile weights persistWeights mortality
+
+> generateMapWeights :: [String] -> IO (M.Map String Float)
+> generateMapWeights ss = do
+>   ps <- generateProbabilities (length ss)
+>   return $ generateFromPairs (ss `zip` ps)
+>
+> generateProbabilities :: Int -> IO [Float]
+> generateProbabilities n = do
+>       ps <- go n
+>       let n = sum ps
+>       return $ map (/ n) ps
+>   where
+>       go 0 = return []
+>       go k = do
+>           x <- randomRIO (0, 100)
+>           xs <- go (k - 1)
+>           return (x:xs)
+>           
+> generateFromPairs :: [(String, Float)] -> M.Map String Float
+> generateFromPairs pairs = go pairs M.empty
+>   where
+>       go [] m = m
+>       go ((s, f):ss) m = do
+>           let m' = M.insert s f m
+>           go ss m'

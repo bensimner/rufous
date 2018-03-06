@@ -10,6 +10,7 @@ Collecting information for evaluation:
 
 > import System.Process
 
+> import Data.String (fromString)
 > import qualified Data.Aeson as A
 > import qualified Data.ByteString.Lazy.Char8 as BL
 
@@ -22,7 +23,11 @@ Collecting information for evaluation:
 > import qualified Test.Rufous.Extract as E
 > import qualified Test.Rufous.Run as R
 
-> import Debug.Trace
+> instance ToJSON Profile where
+>   toJSON p = object [ (fromString "weights", (toJSON (p ^. operationWeights)))
+>                     , (fromString "persistents", (toJSON (p ^. persistentApplicationWeights))) 
+>                     , (fromString "mortality", toJSON (p ^. mortality))
+>                     ]
 
 > diffProfiles :: P.Profile -> P.Profile -> Float
 > diffProfiles p1 p2 = diffWeights * diffPersistents * diffMortality
@@ -52,38 +57,6 @@ To evaluate the performance/correctness of the generation algorithm -- how
 well it can generate DUGs that conform to a specific profile, we generate
 many profiles then generate DUGs from those profiles and their differences 
 from the orgiginal profile
-
-> generateProfile :: S.Signature -> IO P.Profile
-> generateProfile s = do
->   mortality <- randomRIO (0.0, 1.0) 
->   weights <- generateMapWeights (s ^. S.operations & M.keys)
->   persistWeights <- generateMapWeights (s ^. S.operations & M.keys)
->   return $ P.Profile weights persistWeights mortality
-
-> generateMapWeights :: [String] -> IO (M.Map String Float)
-> generateMapWeights ss = do
->   ps <- generateProbabilities (length ss)
->   return $ generateFromPairs (ss `zip` ps)
->
-> generateProbabilities :: Int -> IO [Float]
-> generateProbabilities n = do
->       ps <- go n
->       let n = sum ps
->       return $ map (/ n) ps
->   where
->       go 0 = return []
->       go k = do
->           x <- randomRIO (0, 100)
->           xs <- go (k - 1)
->           return (x:xs)
->           
-> generateFromPairs :: [(String, Float)] -> M.Map String Float
-> generateFromPairs pairs = go pairs M.empty
->   where
->       go [] m = m
->       go ((s, f):ss) m = do
->           let m' = M.insert s f m
->           go ss m'
 
 
 > experiment1 :: S.Signature -> IO ()

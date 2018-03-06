@@ -15,6 +15,10 @@ build-type:          Simple
 extra-source-files:  ChangeLog.md
 cabal-version:       >=1.10
 
+source-repository head
+  type:     git
+  location: https://github.com/bensimner/rufous
+
 library
   exposed-modules:     Test.Rufous
                        , Test.Rufous.DUG
@@ -27,11 +31,11 @@ library
                        , Test.Rufous.Exceptions
                        , Test.Rufous.Random
                        , Test.Rufous.TH
-                       , Test.Rufous.Stats
+                       , Test.Rufous.Options
 
   build-depends:       base >=4.9 && <4.10
                        , random, containers, process
-                       , aeson, time, bytestring
+                       , time, bytestring
                        , microlens, microlens-th
                        , QuickCheck, template-haskell
                        , filepath, directory

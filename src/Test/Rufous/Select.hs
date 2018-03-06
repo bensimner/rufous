@@ -7,16 +7,56 @@ import Data.Time.Clock
 
 import Data.List (intersperse)
 
+import Test.Rufous.Options (RufousOptions(..))
 import Test.Rufous.Profile as P
 import Test.Rufous.DUG as D
 import Test.Rufous.Run as R
 import Test.Rufous.Signature as S
 
+type OperationName = String
+type ImplementationName = String
+type OperationCount = Int
+type ImplementationTimes = M.Map ImplementationName NominalDiffTime
+type Row = (OperationName, OperationCount, ImplementationTimes)
+
+type OperationTimes = M.Map OperationName Row
+type SummaryTimes = M.Map OperationName Row
+
+{- 
+ - summary:
+ -    | empty count | snoc count | head count | tail count | mortality | pmf | pof | impl1 | impl2 | impl3
+ -    | 5           | 6          | 3          | 2          | 0.6       | 0.2 | 0.3 | 12s   | 4s    | 12s  
+ -}
+
 select :: S.Signature -> [R.TimingDug a] -> IO ()
-select sig = mapM_ (printTable sig)
+select sig dugs = printSummaryTable sig dugs
 
 padStr :: Char -> Int -> String -> String
 padStr c n s = s ++ replicate (n - length s) c
+
+printSummaryTable :: S.Signature -> [R.TimingDug a] -> IO ()
+printSummaryTable s dugs = do
+   let times = map (buildOpTimes s) dugs
+   let table = makeSummaryTable times
+
+   let noRows = length table
+   let noCols = length $ head table
+
+   let dugNames = do {
+      dug <- dugs;
+      case dug ^. D.dugName of
+         Just n -> return n
+         Nothing -> return ""
+      }
+
+   let wrappedTable = insertCol ("dug name" : dugNames) table
+   let lengths = maxLens wrappedTable
+
+   let formatted = map (formatRow " | " wrappedTable) wrappedTable
+
+   let headerLine = formatRow " + " wrappedTable [padStr '-' n "" | n <- lengths]
+   putStrLn $ unlines (head formatted : headerLine : tail formatted)
+   putStrLn ""
 
 -- this takes a DUG and builds the count/total time for each operation for each implementation
 printTable :: S.Signature -> R.TimingDug a -> IO ()
@@ -54,8 +94,6 @@ maxLens :: [[ [a] ]] -> [Int]
 maxLens ([]:_) = []
 maxLens xs = (maximum . map (length . head) $ xs) : maxLens (map tail xs)
 
-type Row = (String, Int, ImplementationTimes)
-
 makeTable :: OperationTimes -> [[String]]
 makeTable times = header : map makeRow (M.elems times)
    where header = "operation" : "count" : opHeaders
@@ -75,8 +113,21 @@ makeCols count diffTime =
       show (0 :: NominalDiffTime)
    ]
 
-type ImplementationTimes = M.Map String NominalDiffTime
-type OperationTimes = M.Map String Row
+-- [{empty: (empty, 0, {impl1: 0.5, impl2: 0.3}), ...}, ...]
+makeSummaryTable :: [OperationTimes] -> [[String]]
+makeSummaryTable (times@(t:ts)) = table
+   where
+      table = (header t) : makeRows times
+      makeRows [] = []
+      makeRows (rt:rts) = row rt : makeRows rts
+      header t = 
+            [show o ++ " count" | o <- (M.keys t)] 
+         ++ ["mortality"] 
+         ++ [show i ++ " time (s)" | i <- (M.keys t)]
+      row t = 
+            [show o ++ " count" | o <- (M.keys t)]
+         ++ ["mortality"] 
+         ++ [show i ++ " time (s)" | i <- (M.keys t)]
 
 emptyOpTimes :: S.Signature -> R.TimingDug a -> OperationTimes
 emptyOpTimes s d = M.fromList [(name o, (name o, 0, emptyImplTimes d)) | o <- s ^. S.operations & M.elems]
