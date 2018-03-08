@@ -74,4 +74,16 @@ Obtaining information from the Signature is very easy with some simple combinato
 > operationNames :: Signature -> [String]
 > operationNames s = M.keys $ s ^. operations
 
-Convenience functions and instances:
+Signature specific operations over profiles
+===========================================
+
+
+> pmf :: Signature -> P.Profile -> Float
+> pmf s p = sum pmfs
+>   where mutators = [k | (k, o) <- M.toList (s ^. operations), Mutator == (o ^. opSig ^. opType)]
+>         pmfs = [(p ^. P.persistentApplicationWeights) M.! k | k <- mutators]
+
+> pof :: Signature -> P.Profile -> Float
+> pof s p = sum pofs
+>   where observers = [k | (k, o) <- M.toList (s ^. operations), Observer == (o ^. opSig ^. opType)]
+>         pofs = [(p ^. P.persistentApplicationWeights) M.! k | k <- observers]
