@@ -1,32 +1,64 @@
+{-# LANGUAGE TemplateHaskell, ExistentialQuantification #-}
 module Test.Rufous.Select where
 
-import Lens.Micro ((^.), (&), _1, _2, (^..), _3)
+import Lens.Micro ((^.), (&), (%~), _1, _2, (^..))
+import Lens.Micro.TH (makeLenses)
 
 import qualified Data.Map as M
 import Data.Time.Clock
 
+import Debug.Trace
+
 import Data.List (intersperse)
 
-import Test.Rufous.Options (RufousOptions(..))
-import Test.Rufous.Profile as P
-import Test.Rufous.DUG as D
-import Test.Rufous.Run as R
-import Test.Rufous.Signature as S
+import qualified Test.Rufous.Options (RufousOptions(..))
+import qualified Test.Rufous.Profile as P
+import qualified Test.Rufous.DUG as D
+import qualified Test.Rufous.Run as R
+import qualified Test.Rufous.Signature as S
 
-type OperationName = String
-type ImplementationName = String
-type OperationCount = Int
-type ImplementationTimes = M.Map ImplementationName NominalDiffTime
-type Row = (OperationName, OperationCount, ImplementationTimes)
+type ImplementationTimes = M.Map String NominalDiffTime
 
-type OperationTimes = M.Map OperationName Row
-type SummaryTimes = M.Map OperationName Row
 
+-- A "row" in the DUG timing tables
+{- 
+ - dug:
+ -    operation | count | impl1 total | impl1 avg | impl2 total | impl2 avg | ...
+ -    ==========+=======+=============+===========+=============+===========+=====
+ -    empty     | 3     | 12s         | 4s        | 6s          | 2s        | ...
+ -}
+data TDUG = forall a. T {tdug :: R.TimingDug a}
+
+data OpRecord = 
+   OpRecord 
+      { _opName :: String
+      , _opCount :: Int 
+      , _implTotalTimes :: ImplementationTimes
+      , _opDug :: TDUG
+      }
+makeLenses ''OpRecord
+
+-- A "row" in the summary table
 {- 
  - summary:
- -    | empty count | snoc count | head count | tail count | mortality | pmf | pof | impl1 | impl2 | impl3
- -    | 5           | 6          | 3          | 2          | 0.6       | 0.2 | 0.3 | 12s   | 4s    | 12s  
+ -    dug   | empty count | snoc count | head count | tail count | mortality | pmf | pof | impl1 | impl2 | impl3
+ -    ======+=============+============+============+============+===========+=====+=====+=======+=======+=======
+ -    dug 1 | 5           | 6          | 3          | 2          | 0.6       | 0.2 | 0.3 | 12s   | 4s    | 12s  
  -}
+data SummaryRecord = 
+   SummaryRecord 
+      { _dug :: TDUG
+      , _ops :: M.Map String Int  -- operation counts
+      , _mortality :: Float
+      , _pmf :: Float -- from profile, but condensed 
+      , _pof :: Float -- ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      , _implTimes :: ImplementationTimes
+      }
+makeLenses ''SummaryRecord
+
+-- Operation times for some DUG
+-- todo: add dug + profile info to these ...
+type OperationTimes = M.Map String OpRecord
 
 select :: S.Signature -> [R.TimingDug a] -> IO ()
 select sig dugs = printSummaryTable sig dugs
@@ -37,7 +69,7 @@ padStr c n s = s ++ replicate (n - length s) c
 printSummaryTable :: S.Signature -> [R.TimingDug a] -> IO ()
 printSummaryTable s dugs = do
    let times = map (buildOpTimes s) dugs
-   let table = makeSummaryTable times
+   let table = makeSummaryTable s times
 
    let noRows = length table
    let noCols = length $ head table
@@ -97,12 +129,18 @@ maxLens xs = (maximum . map (length . head) $ xs) : maxLens (map tail xs)
 makeTable :: OperationTimes -> [[String]]
 makeTable times = header : map makeRow (M.elems times)
    where header = "operation" : "count" : opHeaders
-         opHeaders = addHeaders $ M.keys (((M.elems times) !! 0) ^. _3)
+         first = M.elems times !! 0
+         opHeaders = addHeaders $ M.keys (first ^. implTotalTimes)
          addHeaders [] = []
          addHeaders (x:xs) = (x ++ " (total)") : (x ++ " (average)") : addHeaders xs
 
-makeRow :: Row -> [String]
-makeRow (name, count, implTimes) = name : show count : concat (map (makeCols count) (M.elems implTimes))
+makeRow :: OpRecord -> [String]
+makeRow r = 
+   name : show count : concat (map (makeCols count) (M.elems implTimes))
+   where
+      name = r ^. opName
+      count = r ^. opCount
+      implTimes = r ^. implTotalTimes
 
 makeCols :: Int -> NominalDiffTime -> [String]
 makeCols count diffTime =
@@ -114,23 +152,50 @@ makeCols count diffTime =
    ]
 
 -- [{empty: (empty, 0, {impl1: 0.5, impl2: 0.3}), ...}, ...]
-makeSummaryTable :: [OperationTimes] -> [[String]]
-makeSummaryTable (times@(t:ts)) = table
+makeSummaryTable :: S.Signature -> [OperationTimes] -> [[String]]
+makeSummaryTable s (times@(t:ts)) = table
    where
-      table = (header t) : makeRows times
-      makeRows [] = []
-      makeRows (rt:rts) = row rt : makeRows rts
+      summaryRecords = makeSummaryRecords s times
+      table = (header t) : map row summaryRecords
+      impls = M.keys $ ((M.elems t) !! 0) ^. implTotalTimes
       header t = 
             [show o ++ " count" | o <- (M.keys t)] 
-         ++ ["mortality"] 
-         ++ [show i ++ " time (s)" | i <- (M.keys t)]
-      row t = 
-            [show o ++ " count" | o <- (M.keys t)]
-         ++ ["mortality"] 
-         ++ [show i ++ " time (s)" | i <- (M.keys t)]
+         ++ ["mortality", "pmf", "pof"] 
+         ++ [show i ++ " time" | i <- impls]
+      row sr = 
+            [show o | o <- (M.elems (sr ^. ops))]
+         ++ [show (sr ^. mortality), show (sr ^. pmf), show (sr ^. pof)] 
+         ++ [show t | t <- (M.elems (sr ^. implTimes))]
+
+makeSummaryRecords :: S.Signature -> [OperationTimes] -> [SummaryRecord]
+makeSummaryRecords s times = map (makeSummaryRecord s) times
+
+makeSummaryRecord :: S.Signature -> OperationTimes -> SummaryRecord
+makeSummaryRecord s t = 
+      SummaryRecord (first ^. opDug) cs m pmf pof implTimes
+  where cs = getOpCounts (M.elems t)
+        first = (M.elems t) !! 0
+        p = 
+         case first ^. opDug of 
+            T a -> D.extractProfile s a
+        m = p ^. P.mortality
+        pmf = S.pmf s p
+        pof = S.pof s p
+        implTimes = getImplTimes (M.elems t)
+
+getOpCounts :: [OpRecord] -> M.Map String Int
+getOpCounts = go M.empty
+   where
+      go m [] = m
+      go m (r:rs) = 
+         let m' = M.insertWith (\_ c -> c + (r ^. opCount)) (r ^. opName) (r ^. opCount) m
+         in go m' rs
+
+getImplTimes :: [OpRecord] -> M.Map String NominalDiffTime
+getImplTimes rs = foldr1 addMaps [r ^. implTotalTimes | r <- rs]
 
 emptyOpTimes :: S.Signature -> R.TimingDug a -> OperationTimes
-emptyOpTimes s d = M.fromList [(name o, (name o, 0, emptyImplTimes d)) | o <- s ^. S.operations & M.elems]
+emptyOpTimes s d = M.fromList [(name o, OpRecord (name o) 0 (emptyImplTimes d) (T d)) | o <- s ^. S.operations & M.elems]
    where name o = o ^. S.opName
 
 emptyImplTimes :: R.TimingDug a -> ImplementationTimes
@@ -142,8 +207,12 @@ buildOpTimes :: S.Signature -> R.TimingDug a -> OperationTimes
 buildOpTimes s d = D.foldDug updateNode (emptyOpTimes s d) d
 
 updateNode :: OperationTimes -> D.Node (a, R.TimingValue) -> OperationTimes
-updateNode times n = M.adjust (\(s, c, im) -> (s, c+1, foldr updateImpl im impls)) (n ^. D.nodeOperation ^. S.opName) times
+updateNode times n = M.adjust (\r -> r & opCount %~ succ & implTotalTimes %~ (\im -> foldr updateImpl im impls)) (n ^. D.nodeOperation ^. S.opName) times
    where (_, impls) = n ^. D.node
 
 updateImpl :: (S.Implementation, NominalDiffTime) -> ImplementationTimes -> ImplementationTimes
 updateImpl (impl, ndiff) = M.adjust (\d -> d + ndiff) (impl ^. S.implName)
+
+-- assume k `elem` (keys m1) <==> k `elem` (keys m2)
+addMaps :: (Ord k, Num a) => M.Map k a -> M.Map k a -> M.Map k a
+addMaps m1 m2 = M.fromList [(k, (m1 M.! k) + (m2 M.! k)) | k <- M.keys m1]
