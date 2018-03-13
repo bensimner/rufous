@@ -32,6 +32,7 @@ library
                        , Test.Rufous.Random
                        , Test.Rufous.TH
                        , Test.Rufous.Options
+                       , Test.Rufous.Internal.Timing
 
   build-depends:       base >=4.9 && <4.10
                        , random, containers, process

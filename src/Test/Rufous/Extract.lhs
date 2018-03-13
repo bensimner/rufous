@@ -46,6 +46,7 @@ that pretends it's pure -- this also caches the value of the fresh id for us.
 
 > import qualified Test.Rufous.Signature as S
 > import qualified Test.Rufous.DUG as D
+> import qualified Test.Rufous.Internal.Timing as T
 > import qualified Data.Map as M
 
 > import Data.Either
@@ -131,7 +132,7 @@ Then a set of logging functions can update the state in an unsafe way:
 >   return dug
 
 > extract :: S.Signature -> IO a -> IO (a, ExtractedDUG)
-> extract s a = do
+> extract s a = T.time "EXTRACT PHASE" $ do
 >   init_state
 >   v <- a
 >   d <- read_state s

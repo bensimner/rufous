@@ -1,4 +1,4 @@
-> {-# LANGUAGE StandaloneDeriving, ExistentialQuantification, TemplateHaskell #-}
+> {-# LANGUAGE BangPatterns, StandaloneDeriving, ExistentialQuantification, TemplateHaskell #-}
 > module Test.Rufous.Generate where
 >
 > import Lens.Micro ((^.), (&), (%~), (.~))
@@ -20,6 +20,7 @@
 > import qualified Test.Rufous.Profile as P
 > import qualified Test.Rufous.Random as R
 > import qualified Test.Rufous.Exceptions as E
+> import qualified Test.Rufous.Internal.Timing as T
 
 Generating a DUG is a multi-step process.
 The core algorithm attempts to build a DUG step by step,
@@ -117,20 +118,22 @@ Pipeline
 
 Now the pipeline has multiple stages, starting from the empty DUG and empty state:
 
-> generateFreshDugName :: () -> Maybe String
-> generateFreshDugName() = unsafePerformIO $ do
->   n <- QC.generate (QC.arbitrary)
->   return $ Just $ "dug" ++ (show (n :: Int))
+> generateFreshDugName :: IO String
+> generateFreshDugName = do
+>   n <- randomRIO (0, 10000)
+>   return $ "dug" ++ (show (n :: Int))
 
-> emptyState :: S.Signature -> P.Profile -> GenState
-> emptyState s p = GenState 
->   { _dug=D.emptyDug & D.dugName .~ generateFreshDugName()
->   , _buffer=[]
->   , _sig=s
->   , _profile=p
->   , _livingNodes=St.empty
->   , _mutatorNodes=OperationNodes St.empty St.empty
->   , _observerNodes=OperationNodes St.empty St.empty }
+> emptyState :: S.Signature -> P.Profile -> IO GenState
+> emptyState s p = do 
+>       name <- generateFreshDugName
+>       return $ GenState 
+>           { _dug=D.emptyDug & D.dugName .~ (Just name)
+>           , _buffer=[]
+>           , _sig=s
+>           , _profile=p
+>           , _livingNodes=St.empty
+>           , _mutatorNodes=OperationNodes St.empty St.empty
+>           , _observerNodes=OperationNodes St.empty St.empty }
 
 Stage 1
 -------
@@ -352,7 +355,7 @@ When committed it's important to move the new node into the correct buckets:
 
 > data RunResult = 
 >   forall a. (Show a, Typeable a) => 
->   RunSuccess Dynamic a | RunTypeFail | RunExcept E.RufousException
+>   RunSuccess Dynamic !a | RunTypeFail | RunExcept E.RufousException
 > runDynamic :: S.ImplType -> Dynamic -> IO RunResult
 > runDynamic (S.ImplType t) d = run t fromDynamic
 >   where
@@ -360,16 +363,18 @@ When committed it's important to move the new node into the correct buckets:
 >       run _ f = do
 >           case f d of
 >               Nothing -> return RunTypeFail
->               Just r  -> catch (r `seq` return $ RunSuccess d r) handleE
+>               Just r  -> catch' (RunSuccess d r)
 >       handleE :: E.RufousException -> IO RunResult
 >       handleE e = return $ RunExcept e
+>       catch' :: RunResult -> IO RunResult
+>       catch' x = catch (x `seq` return x) handleE
 
 > data ShadowResult = NoShadow | WasObserver | HasShadow Dynamic | ShadowGuardFailed
 >   deriving (Show)
 > tryMakeShadow :: GenDUG -> Maybe S.ShadowImplementation -> S.Operation -> [D.DUGArg] -> IO ShadowResult
 > tryMakeShadow dug impl op args = 
 >       case impl of
->           Just shadowImpl -> do
+>           Just shadowImpl -> T.time "(dbg) gen shadow" $ do
 >               result <- runDynamic t dyn
 >               case result of
 >                   RunSuccess d _ -> return $ HasShadow d
@@ -432,8 +437,9 @@ API
 ---
 
 > makeDUG :: S.Signature -> P.Profile -> Int -> IO GenDUG
-> makeDUG s p size = do
->       st <- go size (emptyState s p)
+> makeDUG s p size = T.time "(dbg) gen" $ do
+>       emp <- emptyState s p
+>       st <- go size emp
 >       return $ st ^. dug
 >   where
 >       go :: Int -> GenState -> IO GenState

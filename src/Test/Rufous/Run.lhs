@@ -1,8 +1,11 @@
+> {-# LANGUAGE BangPatterns #-}
 > module Test.Rufous.Run where
 
 > import Lens.Micro
 > import Lens.Micro.TH
 > import Data.Dynamic
+
+> import Debug.Trace
 
 > import Data.Time.Clock
 > import Data.Maybe
@@ -12,6 +15,8 @@
 > import qualified Test.Rufous.DUG as D
 > import qualified Test.Rufous.Signature as S
 > import qualified Test.Rufous.Generate as G
+
+> import qualified Test.Rufous.Internal.Timing as T
 
 To "run" a DUG is simple:
     + given a DUG with a list of operations, create a list of versions
@@ -36,7 +41,7 @@ To tag the nodes in the DUG:
 >         unpair (t, n) = n & D.node %~ (\(a, b) -> (a, b ++ [t]))
 
 > runDUG :: [S.Implementation] -> D.DUG a -> IO (TimingDug a)
-> runDUG impls dug = updateDug impls (emptyImplDug dug)
+> runDUG impls dug = T.time "(dbg) runDUG" $ updateDug impls (emptyImplDug dug)
 >   where
 >       versionNodes :: S.Implementation -> [(Dynamic, S.ImplType)]
 >       versionNodes impl = versions
@@ -58,7 +63,7 @@ To tag the nodes in the DUG:
 >       runVersion :: S.ImplType -> Dynamic -> IO NominalDiffTime
 >       runVersion t d = do
 >           let action = G.runDynamic t d
->           (_, time) <- record action
+>           (_, !time) <- T.time "(dbg) runVersion" $ record action
 >           return time
 >       runAll :: [(Dynamic, S.ImplType)] -> IO [NominalDiffTime]
 >       runAll [] = return []
@@ -68,7 +73,7 @@ To tag the nodes in the DUG:
 >           return $ time : times
 >       updateDug [] d = return d
 >       updateDug (impl:impls) d = do
->           times <- runAll (versionNodes impl)
+>           !times <- runAll (versionNodes impl)
 >           let implTimes = map ((,) impl) times
 >           updateDug impls (tagDugTimes d implTimes)
 

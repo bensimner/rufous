@@ -7,8 +7,6 @@ import Lens.Micro.TH (makeLenses)
 import qualified Data.Map as M
 import Data.Time.Clock
 
-import Debug.Trace
-
 import Data.List (intersperse)
 
 import qualified Test.Rufous.Options (RufousOptions(..))
@@ -16,6 +14,9 @@ import qualified Test.Rufous.Profile as P
 import qualified Test.Rufous.DUG as D
 import qualified Test.Rufous.Run as R
 import qualified Test.Rufous.Signature as S
+
+import System.IO.Unsafe
+import qualified Test.Rufous.Internal.Timing as T
 
 type ImplementationTimes = M.Map String NominalDiffTime
 
@@ -61,7 +62,7 @@ makeLenses ''SummaryRecord
 type OperationTimes = M.Map String OpRecord
 
 select :: S.Signature -> [R.TimingDug a] -> IO ()
-select sig dugs = printSummaryTable sig dugs
+select sig dugs = T.time "(dbg) select" $ printSummaryTable sig dugs
 
 padStr :: Char -> Int -> String -> String
 padStr c n s = s ++ replicate (n - length s) c
