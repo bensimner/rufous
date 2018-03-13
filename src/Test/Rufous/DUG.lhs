@@ -10,6 +10,8 @@
 > import System.Process
 > import Data.List (intercalate)
 
+> import Debug.Trace
+
 > import Test.Rufous.Random
 > import qualified Test.Rufous.Signature as S
 > import qualified Test.Rufous.Profile as P
@@ -147,17 +149,15 @@ and conversion to GraphViz:
 
 > dug2dot' :: DUG n -> (Node n -> String) -> (Edge -> String) -> String -> IO ()
 > dug2dot' d fN fE fName = do
->   print "[dot/...] making dot..."
+>   putStrLn $ "[dot/...] writing dug " ++ fName ++ " ..."
 >   writeFile dotName ""
 >   write "digraph G {"
->   print "[dot/...] writing nodes..."
+>   write "overlap=\"false\""
 >   write . unlines $ [show (n ^. nodeIndex) ++ "[label=\"" ++ fN n ++ "\"]"  | n <- d ^. operations]
->   print "[dot/...] writing edges..."
 >   write . unlines $ [show (e ^. from) ++ "->" ++ show (e ^. to) ++ "[label=\"" ++ fE e ++ "\"]"  | e <- edges d]
 >   write "}"
->   print "[dot/...] written dot, compiling to png..."
->   createProcess (proc "dot" [dotName, "-Tpng", "-o", pngName])
->   print "[dot/done]"
+>   createProcess (proc "neato" [dotName, "-Tpng", "-o", pngName])
+>   return ()
 >   where
 >       write s = appendFile dotName (s ++ "\n")
 >       dotName = fName ++ ".dot"
@@ -177,7 +177,7 @@ Extracting a profile from a DUG is fairly straightforward:
 > extractProfile :: S.Signature -> DUG n -> P.Profile
 > extractProfile s d = P.Profile weights persistentApplicationWeights mortality
 >   where
->       argKeys = d ^. arguments & M.keysSet
+>       argKeys = (d ^. arguments & M.filterWithKey (const (not . null))) & M.keysSet
 >       totalNodes = fromIntegral $ length $ d ^. operations 
 >       livingNodes = fromIntegral $ length $ filter (\n -> (n ^. nodeIndex) `St.member` argKeys) (d ^. operations)
 >       mortality = 1 - (livingNodes / totalNodes)
