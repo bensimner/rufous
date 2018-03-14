@@ -4,8 +4,8 @@ module Test.Rufous(
    , runRufousWithOptions
    , RufousOptions(..)
    , DebugOptions(..)
-   , defaultOptions
-   , defaultDebugOptions
+   , args
+   , debugArgs
 
    , guardFailed
    , shadowUndefined
@@ -31,7 +31,7 @@ module Test.Rufous(
    , Se.select
 
    -- TH Constructor
-   , makeRufousSpec
+   , makeADTSpec
 )
 where
 
@@ -39,9 +39,8 @@ import Control.Exception
 
 import Lens.Micro
 
-import Test.Rufous.Options 
-   ( RufousOptions(..), DebugOptions(..), debugFlag
-   , debugOpt, defaultOptions, defaultDebugOptions)
+import Test.Rufous.Options as Opt
+   ( RufousOptions(..), DebugOptions(..), debugFlag, debugOpt)
 
 import Test.Rufous.DUG as D
 import Test.Rufous.Signature as S
@@ -57,6 +56,24 @@ import Test.Rufous.Exceptions as Ex
 
 import Test.Rufous.Internal.Timing as T
 
+debugArgs = 
+   DebugOptions 
+      { dumpDugs=False
+      , dumpDir="./"
+      , dumpPhaseTiming=True 
+      , showNullTimes=True
+      }
+args = 
+   RufousOptions 
+      { signature=error "args :: no signature specified"
+      , profiles=[]
+      , dugs=[]
+      , averageDugSize=10
+      , numberOfTests=1
+      , debug=False
+      , debugOptions=debugArgs 
+      }
+
 runRufousOnDugs :: RufousOptions -> S.Signature -> [D.DUG a] -> IO ()
 runRufousOnDugs opts s dugs = do
    let impls = s ^. S.nullImpl : s ^. S.implementations
@@ -67,23 +84,41 @@ runRufousOnDugs opts s dugs = do
       else return ()
 
    let normalisedDugs = map (R.normaliseDug s) runDugs
-   T.time ("SELECT PHASE") $ Se.select s runDugs
+
+   timingDugs <- do
+      if debugFlag showNullTimes opts
+         then return runDugs
+         else return normalisedDugs
+
+   T.time ("SELECT PHASE") $ Se.select s timingDugs
 
 runRufousOnProfiles :: RufousOptions -> S.Signature -> [P.Profile] -> IO ()
-runRufousOnProfiles opts s profiles = do
-   dugs <- mapM (\p -> T.time "GENERATE PHASE" $ makeDUG s p (averageDugSize opts)) profiles
-   if (debugFlag dumpDugs opts) 
-      then dumpDugs2dot opts dugs
+runRufousOnProfiles args s profiles = do
+   dugs <- mapM (\p -> T.time "GENERATE PHASE" $ makeDUG s p (averageDugSize args)) profiles
+   if (debugFlag dumpDugs args) 
+      then dumpDugs2dot args dugs
+      else return ()
+   
+   case args of
+      RufousOptions _ _ [] _ _ _ _ -> runRufousOnDugs args s dugs
+      RufousOptions _ _ ds _ _ _ _ -> runRufousOnDugs args s ds
+
+runRufousWithOptions :: RufousOptions -> IO ()
+runRufousWithOptions args = do
+   T.reset
+   let s = signature args
+   profiles <- 
+      if null (profiles args)
+         then T.time "GENERATE PHASE (gen profiles)" $ mapM (const $ G.generateProfile s) [1..(numberOfTests args)]
+         else return (profiles args)
+
+   if debug args
+      then mapM_ (putStrLn . P.prettyShowProfile) profiles
       else return ()
 
-   runRufousOnDugs opts s dugs
+   runRufousOnProfiles args s profiles
 
-runRufousWithOptions :: RufousOptions -> S.Signature -> IO ()
-runRufousWithOptions opts s = do
-   T.reset
-   profiles <- T.time "GENERATE PHASE (gen profiles)" $ mapM (const $ G.generateProfile s) [1..(numberOfTests opts)]
-   runRufousOnProfiles opts s profiles
-   if (debugFlag dumpPhaseTiming opts)
+   if (debugFlag dumpPhaseTiming args)
       then do 
          c <- T.collect
          putStrLn "Phase timings:"
@@ -116,4 +151,4 @@ dumpDugs2dot o (d:dugs) = do
          fName = (dumpDir (debugOptions o)) </> name
 
 runRufous :: S.Signature -> IO ()
-runRufous = runRufousWithOptions defaultOptions
+runRufous s = runRufousWithOptions args{signature=s}

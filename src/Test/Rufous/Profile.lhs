@@ -9,6 +9,8 @@ The `Profile' type defined in this file is one such set of statistics
 > import Lens.Micro.TH
 > import qualified Data.Map as M
 
+> import Data.List (intercalate)
+
 The Profile contains multiple important characteristics:
     - The weights of proportion for each of the applications of the operations
     - The weights of persistent applications of those operations
@@ -32,3 +34,8 @@ Extracting information
 >
 > persistentProb :: Profile -> String -> Float
 > persistentProb p s = (p ^. persistentApplicationWeights) M.! s
+
+> prettyShowProfile :: Profile -> String
+> prettyShowProfile (Profile ws ps m) = "{weights={" ++ toStr ws ++ "}, pers={" ++ toStr ps ++ "}, mortality=" ++ (show m) ++ "}"
+>   where
+>       toStr m = intercalate ", " (map (\(k, a) -> k ++ ": " ++ show a) (M.toList m))

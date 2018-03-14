@@ -2,13 +2,16 @@
 module Main where
 
 import Test.Rufous 
-   ( makeRufousSpec
+   ( makeADTSpec
    , runRufous
    , runRufousWithOptions
-   , defaultOptions
+   , args
    , RufousOptions(..)
    , shadowUndefined
    , guardFailed )
+
+import Test.Rufous.DUG as D
+import Test.Rufous.Generate as G
 
 class Queue q where
    snoc :: a -> q a -> q a
@@ -32,6 +35,6 @@ instance Queue ShadowQueue where
    head' (ShadowQueue xs) | xs > 0  = shadowUndefined
    head' (ShadowQueue xs) | xs <= 0 = guardFailed
 
-makeRufousSpec ''Queue
+makeADTSpec ''Queue
 
 main = runRufous _Queue

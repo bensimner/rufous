@@ -1,32 +1,35 @@
+{-# LANGUAGE ExistentialQuantification #-}
 module Test.Rufous.Options 
    ( RufousOptions(..)
    , DebugOptions(..)
-   , defaultOptions
-   , defaultDebugOptions
    , debugFlag
    , debugOpt
    )
 where
 
+import Test.Rufous.Signature
+import Test.Rufous.Profile
+import Test.Rufous.DUG
+
 data RufousOptions =
+   forall d.
    RufousOptions
-      { averageDugSize :: Int
+      { signature :: Signature
+      , profiles :: [Profile]
+      , dugs :: [DUG d]
+      , averageDugSize :: Int
       , numberOfTests :: Int
       , debug :: Bool
       , debugOptions :: DebugOptions
       }
-   deriving (Eq, Show)
 
 data DebugOptions = 
    DebugOptions {
         dumpDir :: String
       , dumpDugs :: Bool
       , dumpPhaseTiming :: Bool
+      , showNullTimes :: Bool
    }
-   deriving (Eq, Show)
-
-defaultDebugOptions = DebugOptions { dumpDugs=False, dumpDir="./", dumpPhaseTiming=True }
-defaultOptions = RufousOptions { averageDugSize=10, numberOfTests=1, debug=False, debugOptions=defaultDebugOptions }
 
 debugOpt :: (DebugOptions -> a) -> a -> RufousOptions -> a
 debugOpt f x r = if debug r then f (debugOptions r) else x
