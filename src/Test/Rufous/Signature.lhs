@@ -79,11 +79,11 @@ Signature specific operations over profiles
 
 
 > pmf :: Signature -> P.Profile -> Float
-> pmf s p = sum pmfs
+> pmf s p = sum pmfs / (fromIntegral (length pmfs))
 >   where mutators = [k | (k, o) <- M.toList (s ^. operations), Mutator == (o ^. opSig ^. opType)]
 >         pmfs = [(p ^. P.persistentApplicationWeights) M.! k | k <- mutators]
 
 > pof :: Signature -> P.Profile -> Float
-> pof s p = sum pofs
+> pof s p = sum pofs / (fromIntegral (length pofs))
 >   where observers = [k | (k, o) <- M.toList (s ^. operations), Observer == (o ^. opSig ^. opType)]
 >         pofs = [(p ^. P.persistentApplicationWeights) M.! k | k <- observers]
