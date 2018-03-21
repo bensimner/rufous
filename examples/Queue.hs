@@ -4,16 +4,13 @@ import Prelude hiding (head, tail)
 import qualified Prelude as P
 
 import Test.Rufous 
-   ( makeADTSpec
+   ( makeADTSignature
    , runRufous
-   , runRufousWithOptions
+   , mainWith
    , args
    , RufousOptions(..)
    , shadowUndefined
    , guardFailed )
-
-import Test.Rufous.DUG as D
-import Test.Rufous.Generate as G
 
 class Queue q where
    snoc :: a -> q a -> q a
@@ -27,7 +24,7 @@ newtype ListQueue a = ListQueue [a]
 
 instance Queue ListQueue where
    snoc x (ListQueue xs) = ListQueue (xs ++ [x])
-   empty     = ListQueue []
+   empty = ListQueue []
    head (ListQueue xs) = P.head xs
    tail (ListQueue xs) = ListQueue $ P.tail xs
 
@@ -77,6 +74,6 @@ instance Queue ShadowQueue where
    tail (ShadowQueue xs) | xs > 0  = ShadowQueue (xs - 1)
    tail (ShadowQueue xs) | xs <= 0 = guardFailed
 
-makeADTSpec ''Queue
+makeADTSignature ''Queue
 
-main = runRufousWithOptions args{signature=_Queue, averageDugSize=10000, numberOfTests=1}
+main = mainWith args{signature=_Queue, averageDugSize=100, numberOfTests=10}

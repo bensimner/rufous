@@ -1,5 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
-module Test.Rufous.TH (makeADTSpec) where
+module Test.Rufous.TH (makeADTSignature) where
 
 import Lens.Micro ((^.), _1)
 import qualified Data.Map as M
@@ -31,9 +31,9 @@ classifyArgs args =
       else
          Generator
 
--- makeADTSpec will extract information about a given class
-makeADTSpec :: Name -> DecsQ
-makeADTSpec name = do
+-- makeADTSignature will extract information about a given class
+makeADTSignature :: Name -> DecsQ
+makeADTSignature name = do
    info <- reify name
    case info of
       ClassI (ClassD ctx name tys funds sigds) insts -> do
@@ -70,7 +70,7 @@ makeADTSpec name = do
 
          -- Return all declarations
          return $ nullDecl : nullExtractDecl : ds ++ extractorImpls
-      _ -> fail "makeADTSpec expected class name as argument"
+      _ -> fail "makeADTSignature expected class name as argument"
 
 selectBuilders :: [InstanceBuilder] -> (Maybe InstanceBuilder, [InstanceBuilder])
 selectBuilders insts = select isShadowImpl insts
