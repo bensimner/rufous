@@ -1,7 +1,10 @@
 > {-# LANGUAGE TemplateHaskell #-}
 > module Test.Rufous.DUG where
+>
+> import qualified Prelude as P
+> import Prelude hiding (head, tail)
 > 
-> import Lens.Micro ((^.), (%~), (&))
+> import Lens.Micro ((^.), (^..), (%~), (&), _1, _2, (.~), at, _Just)
 > import Lens.Micro.TH (makeLenses)
 >
 > import qualified Data.Map as M
@@ -35,18 +38,12 @@ The usual node/edge types are simple:
 >   deriving (Show)
 > makeLenses ''Node
 
-> data Edge =
->   Edge 
->      { _from :: Int
->      , _to  :: Int
->      }
->   deriving (Show)
-> makeLenses ''Edge
+The DUG is implemented as a reversed association array
+where nodes store their predecessors -- the arguments of the operation
 
 > data DUG n =
 >   DUG 
->      { _operations :: [Node n]
->      ,  _arguments :: M.Map Int [Edge]
+>      { _operations :: M.Map Int (Node n, [Int])
 >      , _dugName :: Maybe String
 >      }
 >   deriving (Show)
@@ -55,38 +52,24 @@ The usual node/edge types are simple:
 Initialisation and creation:
 
 > emptyDug :: DUG n
-> emptyDug = DUG [] M.empty Nothing
->
-> insertEdge :: Int -> Int -> DUG n -> DUG n
-> insertEdge i j d = d & arguments %~ (M.insert i edges')
->   where
->       edges = (d ^. arguments) M.! i
->       edge = Edge i j
->       edges' = edges ++ [edge]
+> emptyDug = DUG M.empty Nothing
+
+> insertArgument :: Int -> Int -> DUG n -> DUG n
+> insertArgument version arg d = d & operations %~ M.update (\n -> Just $ n & _2 %~ (++ [arg])) version
 >
 > insertOp :: Node n -> DUG n -> DUG n
-> insertOp node d = d & operations %~ (++ [node])
->                     & arguments %~ addEmptyEdges node
->                     & arguments %~ updateEdges node (node ^. nodeArgs)
+> insertOp node d = d & operations %~ (M.insert (node ^. nodeIndex) (node, []))
+>                     & operations %~ updateEdges node (node ^. nodeArgs)
 
-> addEmptyEdges :: Node n -> M.Map Int [Edge] -> M.Map Int [Edge]
-> addEmptyEdges n edges = M.insert (n ^. nodeIndex) nEdges' edges
->   where
->       nEdges = M.lookup (n ^. nodeIndex) edges
->       nEdges' = fromMaybe [] nEdges
-
-> updateEdges :: Node n -> [DUGArg] -> M.Map Int [Edge] -> M.Map Int [Edge]
+> updateEdges :: Node n -> [DUGArg] -> M.Map Int (Node n, [Int]) -> M.Map Int (Node n, [Int])
 > updateEdges n [] edges = edges
 > updateEdges n (d:ds) edges = updateEdges n ds (updateEdge n d edges)
 
-> updateEdge :: Node n -> DUGArg -> M.Map Int [Edge] -> M.Map Int [Edge]
-> updateEdge n (S.Version i) edges = M.insert i iEdges' edges
+> updateEdge :: Node n -> DUGArg -> M.Map Int (Node n, [Int]) -> M.Map Int (Node n, [Int])
+> updateEdge n (S.Version i) = M.update f (n ^. nodeIndex)
 >   where
->       maybeEdges = M.lookup i edges
->       iEdges = fromMaybe [] maybeEdges 
->       iEdges' = edge : iEdges
->       edge = Edge i (n ^. nodeIndex)
-> updateEdge _ _ edges = edges
+>       f (n, xs) = Just (n, xs ++ [i])
+> updateEdge _ _ = id
 
 > generateNode :: S.Operation -> [DUGArg] -> DUG n -> n -> Node n
 > generateNode op args d n = Node op args ni n
@@ -95,20 +78,20 @@ Initialisation and creation:
 
 There are many things one would like to extract from a DUG, which are easy with simple combinators:
 
-> edges :: DUG n -> [Edge]
-> edges d = concat $ M.elems (d ^. arguments)
+> edges :: DUG n -> [(Int, Int)]
+> edges d = [((n ^. nodeIndex), x) | (n, xs) <- d ^. operations & M.elems, x <- xs]
 
-> successors :: DUG n -> Int -> [Int]
-> successors d i = [e ^. to | e <- (d ^. arguments) M.! i]
-
-> predecessors :: DUG n -> Int -> [Int]
-> predecessors d i = [e ^. to | e <- concat . map (filter (\e -> i == e ^. to)) $ (M.elems (d ^. arguments))]
+> nodes :: DUG n -> [Node n]
+> nodes d = d ^.. operations . traverse . _1
 
 > opName :: DUG n -> Int -> String
-> opName d i = ((d ^. operations) !! i) ^. nodeOperation ^. S.opName
+> opName d i = ((d ^. operations) M.! i) ^. _1 ^. nodeOperation ^. S.opName
 
 > opType :: DUG n -> Int -> S.OperationType
-> opType d i = ((d ^. operations) !! i) ^. nodeOperation ^. S.opSig ^. S.opType
+> opType d i = ((d ^. operations) M.! i) ^. _1 ^. nodeOperation ^. S.opSig ^. S.opType
+
+> nodeValue :: DUG n -> Int -> n
+> nodeValue d i = ((d ^. operations) M.! i) ^. _1 . node
 
 Debugging
 ---------
@@ -121,9 +104,8 @@ For debugging a pretty-printing function is defined:
 > pprintDUG' :: DUG n -> (Node n -> String) -> String 
 > pprintDUG' d f = lined ["Operations:", operationsRepr, "Arguments:", argumentsRepr]
 >   where
->       operationsRepr = lined [f n | n <- d ^. operations]
->       argumentsRepr  = lined ["n" ++ show n ++ " -> " ++ show (map edgesRepr es) | (n, es) <- d ^. arguments & M.toList]
->       edgesRepr e = show (e ^. to)
+>       operationsRepr = lined [f n | (n, _) <- d ^. operations & M.elems]
+>       argumentsRepr  = lined ["n" ++ show n ++ " -> " ++ show es | (n, (_, es)) <- d ^. operations & M.toList]
 >       lined = unlines . map (" + " ++)
 
 > pprintNode :: Node n -> String
@@ -132,9 +114,6 @@ For debugging a pretty-printing function is defined:
 >       node = "v" ++ (n ^. nodeIndex & show)
 >       name = n ^. nodeOperation ^. S.opName
 >       args = intercalate " " (map pprintDArg (n ^. nodeArgs))
-
-> pprintEdge :: Edge -> String
-> pprintEdge e = ""
 
 > pprintDArg :: DUGArg -> String 
 > pprintDArg (S.Version i) = "v" ++ show i
@@ -145,16 +124,16 @@ For debugging a pretty-printing function is defined:
 and conversion to GraphViz:
 
 > dug2dot :: DUG n -> String -> IO ()
-> dug2dot d s = dug2dot' d pprintNode pprintEdge s
+> dug2dot d s = dug2dot' d pprintNode s
 
-> dug2dot' :: DUG n -> (Node n -> String) -> (Edge -> String) -> String -> IO ()
-> dug2dot' d fN fE fName = do
+> dug2dot' :: DUG n -> (Node n -> String) -> String -> IO ()
+> dug2dot' d fN fName = do
 >   putStrLn $ "[dot/...] writing dug " ++ fName ++ " ..."
 >   writeFile dotName ""
 >   write "digraph G {"
 >   write "overlap=\"false\""
->   write . unlines $ [show (n ^. nodeIndex) ++ "[label=\"" ++ fN n ++ "\"]"  | n <- d ^. operations]
->   write . unlines $ [show (e ^. from) ++ "->" ++ show (e ^. to) ++ "[label=\"" ++ fE e ++ "\"]"  | e <- edges d]
+>   write . unlines $ [show (n ^. nodeIndex) ++ "[label=\"" ++ fN n ++ "\"]"  | n <- d ^. operations ^.. traverse . _1]
+>   write . unlines $ [show from ++ "->" ++ show to  | (to,from) <- edges d]
 >   write "}"
 >   createProcess (proc "neato" [dotName, "-Tpng", "-o", pngName])
 >   return ()
@@ -177,9 +156,9 @@ Extracting a profile from a DUG is fairly straightforward:
 > extractProfile :: S.Signature -> DUG n -> P.Profile
 > extractProfile s d = P.Profile weights persistentApplicationWeights mortality
 >   where
->       argKeys = (d ^. arguments & M.filterWithKey (const (not . null))) & M.keysSet
+>       argKeys = St.fromList $ map snd $ edges d
 >       totalNodes = fromIntegral $ length $ d ^. operations 
->       livingNodes = fromIntegral $ length $ filter (\n -> (n ^. nodeIndex) `St.member` argKeys) (d ^. operations)
+>       livingNodes = fromIntegral $ M.size $ M.filter (\n -> (n ^. _1 ^. nodeIndex) `St.member` argKeys) (d ^. operations)
 >       mortality = 1 - (livingNodes / totalNodes)
 >       safeDiv a b = if b == 0 then 0 else a / b
 >       weights = (`safeDiv` totalNodes) <$> countOperations s d
@@ -199,18 +178,18 @@ Extracting a profile from a DUG is fairly straightforward:
 >       go (s:ss) m = M.insert s 0 $ go ss m
 
 > countOperations :: Num a => S.Signature -> DUG n -> M.Map String a
-> countOperations s d = go (d ^. operations) (emptyMap s)
+> countOperations s d = go (d ^. operations ^.. traverse . _1) (emptyMap s)
 >   where
 >       go [] m = m
 >       go (o:os) m = let m' = update (o ^. nodeOperation ^. S.opName) (+1) 1 m
 >                     in go os m'
 
 > countArguments :: Num a => S.Signature -> DUG n -> M.Map String a
-> countArguments s d = go (d ^. arguments & M.keys) (emptyMap s)
+> countArguments s d = go (edges d) (emptyMap s)
 >   where
 >       go [] m = m
->       go (i:is) m = let m' = update (opName d i) (+1) 1 m
->                     in go is m'
+>       go ((i, j):is) m = let m' = update (opName d j) (+1) 1 m
+>                          in go is m'
 
 > sameKind :: DUG n -> Int -> Int -> Bool
 > sameKind d i j =
@@ -220,23 +199,43 @@ Extracting a profile from a DUG is fairly straightforward:
 >       (_, S.Observer) -> False
 >       (_, _) -> True
 
+Computing the persistent weights is harder:
+
 > persistentWeights :: Num a => S.Signature -> DUG n -> M.Map String a
-> persistentWeights s d = go (concat (d ^. arguments & M.elems)) (emptyMap s)
->   where
->       go [] m = m
->       go (e:es) m =
->           let name = opName d (e ^. to) in
->           let succs = successors d (e ^. from) in
->           let m' = if 2 <= (length $ filter (sameKind d (e ^. to)) succs)
->               then update name (+1) 1 m
->               else update name (+0) 0 m
->           in go es m'
+> persistentWeights s d = emptyMap s
 
 > instance Functor DUG where
->   fmap f d = d & operations %~ map (fmap f)
+>   fmap f d = d & operations %~ (fmap (_1 %~ fmap f))
 
 > instance Functor Node where
 >   fmap f n = n & node %~ f
 
 > foldDug :: (b -> Node a -> b) -> b -> DUG a -> b
-> foldDug f v d = foldl f v (d ^. operations)
+> foldDug f v d = foldl f v ((d ^. operations & M.elems) ^.. traverse . _1)
+
+> mapDug :: (Node a -> Node b) -> DUG a -> DUG b
+> mapDug f d = d & operations %~ M.map (\n -> n & _1 %~ f)
+
+> instance Applicative Node where
+>   pure x = Node undefined undefined undefined x
+>   fn <*> x = x & node %~ (fn ^. node)
+
+> instance Applicative DUG where
+>   pure x = DUG (M.fromList [(0, (pure x, []))]) Nothing
+>   fdug <*> d = newDug
+>       where
+>           nodes = zip (M.toList (fdug ^. operations)) (M.toList (d ^. operations))
+>           newNodes = map (\((i, (f, _)), (_, (f', xs))) -> (i, (f <*> f', xs))) nodes
+>           newDug = d & operations .~ M.fromList newNodes
+
+> updateNodes :: [Node b] -> DUG a -> DUG b
+> updateNodes ns d = d & operations %~ f
+>   where f m = M.fromList $ map g $ zip ns (M.toList m)
+>         g (n, (i, (k, xs))) = (i, (k & node .~ n ^. node, xs))
+
+> sequenceDugIO :: DUG (IO a) -> IO (DUG a)
+> sequenceDugIO d = do 
+>   nodeValues <- sequence $ map (^. node) (nodes d)
+>   let zipped = zip (nodes d) nodeValues
+>   let new = map (\(n, v) -> n & node .~ v) zipped
+>   return $ updateNodes new d

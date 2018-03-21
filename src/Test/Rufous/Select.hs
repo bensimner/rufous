@@ -201,7 +201,7 @@ emptyOpTimes s d = M.fromList [(name o, OpRecord (name o) 0 (emptyImplTimes d) (
 
 emptyImplTimes :: R.TimingDug a -> ImplementationTimes
 emptyImplTimes d = M.fromList [(i ^. S.implName, 0) | i <- impls]
-   where firstNode = (d ^. D.operations) !! 0
+   where firstNode = (d ^.. D.operations . traverse . _1) !! 0
          impls = firstNode ^.. D.node . _2 . traverse . _1
 
 buildOpTimes :: S.Signature -> R.TimingDug a -> OperationTimes

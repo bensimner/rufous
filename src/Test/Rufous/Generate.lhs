@@ -1,7 +1,7 @@
 > {-# LANGUAGE BangPatterns, StandaloneDeriving, ExistentialQuantification, TemplateHaskell #-}
 > module Test.Rufous.Generate where
 >
-> import Lens.Micro ((^.), (&), (%~), (.~))
+> import Lens.Micro ((^.), (&), (%~), (.~), _1, _2)
 > import Lens.Micro.TH (makeLenses)
 > import Test.QuickCheck as QC
 > import Control.Exception
@@ -386,7 +386,7 @@ When committed it's important to move the new node into the correct buckets:
 >           Nothing -> return NoShadow
 >   where
 >       dynArgs = map mkDyn args
->       mkDyn (S.Version i) = fromJust $ ((dug ^. D.operations) !! i) ^. D.node ^. shadow
+>       mkDyn (S.Version i) = fromJust $ D.nodeValue dug i ^. shadow
 >       mkDyn (S.NonVersion (S.IntArg i)) = toDyn $ i
 >       mkDyn (S.NonVersion (S.BoolArg i)) = toDyn $ i
 >       mkDyn (S.NonVersion (S.VersionParam i)) = toDyn $ i
@@ -406,25 +406,27 @@ This happens before any arguments are ever chosen
 > validArgs :: BufferedOperation -> GenState -> [[BufferedNode]]
 > validArgs bop st = do
 >   v <- bop ^. bufArgs
->   return $ ((st ^. dug ^. D.operations) !!) <$> nodes v
+>   return $ getNode st <$> nodes v
 >   where
 >       living = st ^. livingNodes
 >       observerInfants = st ^. observerNodes ^. infants
 >       mutatorInfants = st ^. observerNodes ^. infants
 >       observerPersistents = st ^. observerNodes ^. persistents
 >       mutatorPersistents = st ^. observerNodes ^. persistents
+>       getNode :: GenState -> Int -> BufferedNode
+>       getNode st i = ((st ^. dug ^. D.operations) M.! i) ^. _1
 >       nodes v = 
 >           case (v, bop ^. persistent, bop ^. bufOp ^. S.opSig ^. S.opType) of
 >               (Filled _, _, _) -> []
 >               (Abstract (S.NonVersion _), _, _) -> []
 >               (Abstract (S.Version    _), False, S.Observer) -> 
->                   St.toList $ living `St.intersection` observerInfants
+>                   {-# SCC "Generate.validArgs.nodes.Version.non-persistent.observer" #-} St.toList $ living `St.intersection` observerInfants
 >               (Abstract (S.Version    _), False, _) -> 
->                   St.toList $ living `St.intersection` mutatorInfants
+>                   {-# SCC "Generate.validArgs.nodes.Version.non-persistent.mutator" #-} St.toList $ living `St.intersection` mutatorInfants
 >               (Abstract (S.Version    _), True, S.Observer) -> 
->                   St.toList $ living `St.intersection` (observerInfants `St.union` observerPersistents)
+>                   {-# SCC "Generate.validArgs.nodes.Version.persistent.observer" #-} St.toList $ living `St.intersection` (observerInfants `St.union` observerPersistents)
 >               (Abstract (S.Version    _), True, _) -> 
->                   St.toList $ living `St.intersection` (mutatorInfants `St.union` mutatorPersistents)
+>                  {-# SCC "Generate.validArgs.nodes.Version.persistent.mutator" #-}  St.toList $ living `St.intersection` (mutatorInfants `St.union` mutatorPersistents)
 
 
 > shadow2str :: Dynamic -> S.ImplType -> String
@@ -455,7 +457,7 @@ API
 > gendug2dot :: S.Signature -> GenDUG -> Bool -> String -> IO ()
 > gendug2dot s d b fName = 
 >   if b then
->       D.dug2dot' d nodeLabel (const "") fName
+>       D.dug2dot' d nodeLabel fName
 >   else
 >       D.dug2dot d fName
 >   where
