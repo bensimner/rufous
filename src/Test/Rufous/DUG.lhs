@@ -13,8 +13,6 @@
 > import System.Process
 > import Data.List (intercalate)
 
-> import Debug.Trace
-
 > import Test.Rufous.Random
 > import qualified Test.Rufous.Signature as S
 > import qualified Test.Rufous.Profile as P
@@ -78,8 +76,9 @@ Initialisation and creation:
 
 There are many things one would like to extract from a DUG, which are easy with simple combinators:
 
-> edges :: DUG n -> [(Int, Int)]
-> edges d = [((n ^. nodeIndex), x) | (n, xs) <- d ^. operations & M.elems, x <- xs]
+> data ArgEdge = E { to :: Int, from :: Int }
+> edges :: DUG n -> [ArgEdge]
+> edges d = [( E (n ^. nodeIndex) x) | (n, xs) <- d ^. operations & M.elems, x <- xs]
 
 > nodes :: DUG n -> [Node n]
 > nodes d = d ^.. operations . traverse . _1
@@ -133,7 +132,7 @@ and conversion to GraphViz:
 >   write "digraph G {"
 >   write "overlap=\"false\""
 >   write . unlines $ [show (n ^. nodeIndex) ++ "[label=\"" ++ fN n ++ "\"]"  | n <- d ^. operations ^.. traverse . _1]
->   write . unlines $ [show from ++ "->" ++ show to  | (to,from) <- edges d]
+>   write . unlines $ [show from ++ "->" ++ show to  | E to from <- edges d]
 >   write "}"
 >   createProcess (proc "neato" [dotName, "-Tpng", "-o", pngName])
 >   return ()
@@ -153,18 +152,21 @@ Extracting a profile from a DUG is fairly straightforward:
           a node with another outgoing edge to another 
           operation with the same kind
 
+> isVersion :: Node n -> Bool
+> isVersion n = n ^. nodeOperation ^. S.opSig ^. S.opType /= S.Observer
+
+> safeDiv a b = if b == 0 then 0 else a / b
+
 > extractProfile :: S.Signature -> DUG n -> P.Profile
-> extractProfile s d = P.Profile weights persistentApplicationWeights mortality
+> extractProfile s d = P.Profile weights pWeights mortality
 >   where
->       argKeys = St.fromList $ map snd $ edges d
->       totalNodes = fromIntegral $ length $ d ^. operations 
->       livingNodes = fromIntegral $ M.size $ M.filter (\n -> (n ^. _1 ^. nodeIndex) `St.member` argKeys) (d ^. operations)
->       mortality = 1 - (livingNodes / totalNodes)
->       safeDiv a b = if b == 0 then 0 else a / b
+>       argKeys = St.fromList $ map from $ filter ((/= S.Observer) . opType d . to) $ edges d
+>       totalNodes = fromIntegral $ M.size $ d ^. operations 
+>       totalVersions = fromIntegral $ M.size $ M.filter (isVersion . fst) $ d ^. operations 
+>       livingVersions = fromIntegral $ St.size argKeys
+>       mortality = 1 - (livingVersions `safeDiv` totalVersions)
 >       weights = (`safeDiv` totalNodes) <$> countOperations s d
->       persistentOpCount = persistentWeights s d
->       argCounts = countArguments s d
->       persistentApplicationWeights = M.mapWithKey (\k a -> a `safeDiv` (argCounts M.! k)) persistentOpCount
+>       pWeights = persistentWeights s d
 
 > update :: Ord k => k -> (a -> a) -> a -> M.Map k a -> M.Map k a
 > update k f v m = M.insert k v' m
@@ -184,12 +186,12 @@ Extracting a profile from a DUG is fairly straightforward:
 >       go (o:os) m = let m' = update (o ^. nodeOperation ^. S.opName) (+1) 1 m
 >                     in go os m'
 
-> countArguments :: Num a => S.Signature -> DUG n -> M.Map String a
+> countArguments :: S.Signature -> DUG n -> M.Map String Float
 > countArguments s d = go (edges d) (emptyMap s)
 >   where
 >       go [] m = m
->       go ((i, j):is) m = let m' = update (opName d j) (+1) 1 m
->                          in go is m'
+>       go ((E i j):is) m = let m' = M.insertWith (+) (opName d i) 1 m
+>                           in go is m'
 
 > sameKind :: DUG n -> Int -> Int -> Bool
 > sameKind d i j =
@@ -201,8 +203,17 @@ Extracting a profile from a DUG is fairly straightforward:
 
 Computing the persistent weights is harder:
 
-> persistentWeights :: Num a => S.Signature -> DUG n -> M.Map String a
-> persistentWeights s d = emptyMap s
+> persistentWeights :: S.Signature -> DUG n -> M.Map String Float
+> persistentWeights s d = M.intersectionWith (safeDiv) persists args
+>   where edgers = map f (edges d)
+>         f (E to from) = (from, opType d to, opName d to)
+>         dups [] s = []
+>         dups ((f,t,v):xs) s = let ds = dups xs (St.insert (f, t) s) 
+>                               in if (f, t) `St.member` s then v:ds else ds
+>         count [] c = c
+>         count (x:xs) c = M.insertWith (+) x 1 (count xs c)
+>         persists = count (dups edgers St.empty) (emptyMap s)
+>         args = countArguments s d
 
 > instance Functor DUG where
 >   fmap f d = d & operations %~ (fmap (_1 %~ fmap f))

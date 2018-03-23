@@ -25,7 +25,7 @@ The `Signature' type describes that API
 >   deriving (Eq, Show)
 >
 > data OperationType = Mutator | Observer | Generator
->   deriving (Eq, Show)
+>   deriving (Eq, Show, Ord)
 >
 > data ImplType = forall t. (Show t, Typeable t) => ImplType t
 > data Implementation = 
