@@ -1,7 +1,7 @@
 module Test.Rufous(
    -- Main API
      runRufous
-   , runRufousWithOptions
+   , mainWith
    , RufousOptions(..)
    , DebugOptions(..)
    , args
@@ -31,7 +31,7 @@ module Test.Rufous(
    , Se.select
 
    -- TH Constructor
-   , makeADTSpec
+   , TH.makeADTSignature
 )
 where
 
@@ -94,7 +94,7 @@ runRufousOnDugs opts s dugs = do
 
 runRufousOnProfiles :: RufousOptions -> S.Signature -> [P.Profile] -> IO ()
 runRufousOnProfiles args s profiles = do
-   dugs <- mapM (\p -> T.time "GENERATE PHASE" $ makeDUG s p (averageDugSize args)) profiles
+   dugs <- mapM (\p -> {- T.time "GENERATE PHASE" $ -} makeDUG s p (averageDugSize args)) profiles
    if (debugFlag dumpDugs args) 
       then dumpDugs2dot args dugs
       else return ()
@@ -103,8 +103,8 @@ runRufousOnProfiles args s profiles = do
       RufousOptions _ _ [] _ _ _ _ -> runRufousOnDugs args s dugs
       RufousOptions _ _ ds _ _ _ _ -> runRufousOnDugs args s ds
 
-runRufousWithOptions :: RufousOptions -> IO ()
-runRufousWithOptions args = do
+mainWith :: RufousOptions -> IO ()
+mainWith args = do
    T.reset
    let s = signature args
    profiles <- 
@@ -137,7 +137,7 @@ p </> p2 =
 dumpTimingDugs2dot :: RufousOptions -> [R.TimingDug a] -> IO ()
 dumpTimingDugs2dot o [] = return ()
 dumpTimingDugs2dot o (d:dugs) = do 
-      D.dug2dot' d (\n -> (n ^. D.node & snd & map snd & show)) (const "") fName
+      D.dug2dot' d (\n -> (n ^. D.node & snd & map snd & show)) fName
       dumpTimingDugs2dot o dugs
    where name = maybe "dug" id (d ^. D.dugName)
          fName = (dumpDir (debugOptions o)) </> name ++ "_timing"
@@ -151,4 +151,4 @@ dumpDugs2dot o (d:dugs) = do
          fName = (dumpDir (debugOptions o)) </> name
 
 runRufous :: S.Signature -> IO ()
-runRufous s = runRufousWithOptions args{signature=s}
+runRufous s = mainWith args{signature=s}
