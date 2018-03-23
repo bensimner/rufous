@@ -9,6 +9,8 @@
 > import Data.List (intercalate)
 > import System.Random (randomRIO)
 
+> import Debug.Trace
+
 > import Data.Dynamic
 > import System.IO.Unsafe
 
@@ -59,6 +61,7 @@ Each stored node has some additional state:
 > data OperationNodes =
 >   OperationNodes
 >       { _infants :: St.Set Int
+>       , _originals :: St.Set Int
 >       , _persistents :: St.Set Int
 >       }
 >   deriving (Show)       
@@ -132,8 +135,8 @@ Now the pipeline has multiple stages, starting from the empty DUG and empty stat
 >           , _sig=s
 >           , _profile=p
 >           , _livingNodes=St.empty
->           , _mutatorNodes=OperationNodes St.empty St.empty
->           , _observerNodes=OperationNodes St.empty St.empty }
+>           , _mutatorNodes=OperationNodes St.empty St.empty St.empty
+>           , _observerNodes=OperationNodes St.empty St.empty St.empty }
 
 Stage 1
 -------
@@ -147,13 +150,10 @@ Then choose properties of the operation:
     - Whether this application is persistent
 Then add this operation to the front of the buffer
 
-> mkBufOp :: S.Operation -> IO BufferedOperation
-> mkBufOp op = do
->   persistent <- R.randomBool 0.1
->   let args = op ^. S.opSig ^. S.opArgs 
->   let abstractArgs = map Abstract args
->   let bop = BufferedOperation op abstractArgs persistent
->   return $ bop
+> mkBufOp :: S.Operation -> Bool -> BufferedOperation
+> mkBufOp op p = BufferedOperation op abstractArgs p
+>   where args = op ^. S.opSig ^. S.opArgs 
+>         abstractArgs = map Abstract args
 
 > chooseOperation :: GenState -> IO BufferedOperation
 > chooseOperation st = do
@@ -161,8 +161,9 @@ Then add this operation to the front of the buffer
 >   let ops = M.elems $ st ^. sig ^. S.operations
 >   let weighted = map (\o -> (o, (p ^. P.operationWeights) M.! (o ^. S.opName))) ops
 >   op <- R.chooseWeighted weighted
->   bop <- mkBufOp op
->   return bop
+>   --print ("chooseOp:", [(w, o ^. S.opName) | (o, w) <- weighted], "=>", op ^. S.opName)
+>   persistent <- R.randomBool $ (p ^. P.persistentApplicationWeights) M.! (op ^. S.opName)
+>   return $ mkBufOp op persistent
 
 > inflate :: GenState -> IO GenState
 > inflate st = go 10 st
@@ -316,6 +317,8 @@ When committed it's important to move the new node into the correct buckets:
 >               & updateNewNode i
 >               & updateOldNodes args
 >   
+>       -- place the new _version_ in the infant sets for mutators and observers
+>       -- since some operations do not result in versions (observers) they have to be discarded from the sets
 >       updateNewNode i st =
 >           if bop ^. bufOp ^. S.opSig ^. S.opType /= S.Observer 
 >               then
@@ -324,27 +327,33 @@ When committed it's important to move the new node into the correct buckets:
 >                   & observerNodes . infants %~ (St.insert i)
 >               else st
 > 
+>       -- if this new node is alive, add it to the living nodes
 >       updateNodeLiving i alive st =
 >           if alive 
 >               then st & livingNodes %~ (St.insert i)
 >               else st
 >
+>       -- when adding a new version, have to look at args and update their states
+>       -- specifically: adding an edge i -> j, means i is no longer an infant
 >       updateOldNodes [] st = st
 >       updateOldNodes (arg:args) st = updateOldNodes args (updateNode arg st)
 >       updateNode arg st = 
->           case (arg, bop ^. persistent, bop ^. bufOp ^. S.opSig ^. S.opType) of
->               (S.Version i, False, S.Observer) -> 
->                   st & observerNodes . infants %~ (St.delete i)
->               (S.Version i, False, _) -> 
->                   st & mutatorNodes . infants %~ (St.delete i)
->               (S.Version i, True, S.Observer) -> 
->                   st & observerNodes . infants %~ (St.delete i)
->                      & observerNodes . persistents %~ (St.insert i)
->               (S.Version i, True, _) -> 
->                   st & mutatorNodes . infants %~ (St.delete i)
->                      & mutatorNodes . persistents %~ (St.insert i)
+>           case (arg, bop ^. bufOp ^. S.opSig ^. S.opType) of
+>               (S.Version i, S.Observer) -> 
+>                   st & observerNodes %~ updateInfantNodes i
+>               (S.Version i, S.Mutator) -> 
+>                   st & mutatorNodes %~ updateInfantNodes i
 >               _                      -> st
 >           
+> updateInfantNodes i nodes | i `St.member` (nodes ^. infants) = 
+>     nodes & infants   %~ St.delete i
+>           & originals %~ St.insert i
+>
+> updateInfantNodes i nodes | i `St.member` (nodes ^. originals) = 
+>     nodes & originals   %~ St.delete i
+>           & persistents %~ St.insert i
+> 
+> updateInfantNodes i nodes = nodes
 
 > runNode :: S.Implementation -> String -> [Dynamic] -> (Dynamic, S.ImplType)
 > runNode impl opName dynArgs = (dynResult dynFunc dynArgs, t)
@@ -410,9 +419,11 @@ This happens before any arguments are ever chosen
 >   where
 >       living = st ^. livingNodes
 >       observerInfants = st ^. observerNodes ^. infants
->       mutatorInfants = st ^. observerNodes ^. infants
+>       mutatorInfants = st ^. mutatorNodes ^. infants
+>       observerOriginals = st ^. observerNodes ^. originals
+>       mutatorOriginals = st ^. mutatorNodes ^. originals
 >       observerPersistents = st ^. observerNodes ^. persistents
->       mutatorPersistents = st ^. observerNodes ^. persistents
+>       mutatorPersistents = st ^. mutatorNodes ^. persistents
 >       getNode :: GenState -> Int -> BufferedNode
 >       getNode st i = ((st ^. dug ^. D.operations) M.! i) ^. _1
 >       nodes v = 
@@ -424,9 +435,9 @@ This happens before any arguments are ever chosen
 >               (Abstract (S.Version    _), False, _) -> 
 >                   {-# SCC "Generate.validArgs.nodes.Version.non-persistent.mutator" #-} St.toList $ living `St.intersection` mutatorInfants
 >               (Abstract (S.Version    _), True, S.Observer) -> 
->                   {-# SCC "Generate.validArgs.nodes.Version.persistent.observer" #-} St.toList $ living `St.intersection` (observerInfants `St.union` observerPersistents)
+>                   {-# SCC "Generate.validArgs.nodes.Version.persistent.observer" #-} St.toList $ living `St.intersection` (observerOriginals `St.union` observerPersistents)
 >               (Abstract (S.Version    _), True, _) -> 
->                  {-# SCC "Generate.validArgs.nodes.Version.persistent.mutator" #-}  St.toList $ living `St.intersection` (mutatorInfants `St.union` mutatorPersistents)
+>                  {-# SCC "Generate.validArgs.nodes.Version.persistent.mutator" #-}  St.toList $ living `St.intersection` (mutatorOriginals `St.union` mutatorPersistents)
 
 
 > shadow2str :: Dynamic -> S.ImplType -> String
