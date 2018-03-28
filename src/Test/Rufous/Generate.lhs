@@ -2,6 +2,7 @@
 > module Test.Rufous.Generate where
 >
 > import Lens.Micro ((^.), (&), (%~), (.~), _1, _2)
+> import Lens.Micro ((^..))
 > import Lens.Micro.TH (makeLenses)
 > import Test.QuickCheck as QC
 > import Control.Exception
@@ -88,8 +89,8 @@ The state is just the product of these types with information about the ADT:
 >       , _sig    :: S.Signature
 >       , _profile :: P.Profile
 >       , _livingNodes :: St.Set Int
->       , _mutatorNodes :: OperationNodes
->       , _observerNodes :: OperationNodes
+>       , _mutatedNodes :: OperationNodes
+>       , _observedNodes :: OperationNodes
 >       }
 >   deriving (Show)
 > makeLenses ''GenState
@@ -106,7 +107,7 @@ For debugging, a pretty-printing GenState function:
 > 
 >
 > pprintBufOp :: BufferedOperation -> String 
-> pprintBufOp bop = (bop ^. bufOp ^. S.opName) ++ ": " ++ (show (bop ^. bufArgs))
+> pprintBufOp bop = (bop ^. bufOp ^. S.opName) ++ ": " ++ (intercalate " " $ pprintBufArg <$> (bop ^. bufArgs))
 
 > pprintBop :: BufferedOperation -> [BufferedArg] -> String 
 > pprintBop bop args = (bop ^. bufOp ^. S.opName) ++ " " ++ intercalate " " (map pprintBufArg args)
@@ -135,8 +136,8 @@ Now the pipeline has multiple stages, starting from the empty DUG and empty stat
 >           , _sig=s
 >           , _profile=p
 >           , _livingNodes=St.empty
->           , _mutatorNodes=OperationNodes St.empty St.empty St.empty
->           , _observerNodes=OperationNodes St.empty St.empty St.empty }
+>           , _mutatedNodes=OperationNodes St.empty St.empty St.empty
+>           , _observedNodes=OperationNodes St.empty St.empty St.empty }
 
 Stage 1
 -------
@@ -213,6 +214,8 @@ Deflating a single operation in a single step:
 
 > deflateStep :: GenState -> IO GenState
 > deflateStep st = do
+>   --putStrLn (replicate 20 '-')
+>   --print (st ^.. buffer . traverse . bufOp . S.opName)
 >   let bop = st ^. buffer & head
 >   let st' = st & buffer %~ tail
 >   deflate_bop bop st'
@@ -232,36 +235,57 @@ arguments in an infinite loop!
 
 > deflate_bop :: BufferedOperation -> GenState -> IO GenState
 > deflate_bop bop st = do
->       args' <- collectArgs bop st
->       if all isFilled args' then do
->           committed <- commitOperation bop args' st
->           case committed of
->               Nothing -> return $ st & buffer %~ (bop:)  -- todo: better re-try semantics
->               Just st' -> return st'
->       else
->           return$ 
->               st 
->               & buffer %~ (bop:)  -- return the argument to the buffer and continue
+>       args <- chooseArgs bop st
+>       --print ("deflate_bop", args)
+>       case args of
+>           Just args' -> commitArgs bop args' st
+>           Nothing    -> return $ st & buffer %~ (bop:)
 
-> collectArgs :: BufferedOperation -> GenState -> IO [BufferedArg]
-> collectArgs bop st = do
->   let possibleArgs :: [(BufferedArg, [BufferedNode])]
->       possibleArgs = (bop ^. bufArgs) `zip` (validArgs bop st)
->   mapM (\(a, ns) -> collectArg bop a ns st) possibleArgs
+> commitArgs :: BufferedOperation -> [BufferedArg] -> GenState -> IO GenState
+> commitArgs bop args st =
+>    if all isFilled args then do
+>        committed <- commitOperation bop args st
+>        case committed of
+>            Nothing -> return $ st & buffer %~ (bop:)  -- todo: better re-try semantics
+>            Just st' -> return st'
+>    else
+>        -- return the argument to the buffer and continue
+>        return $ st & buffer %~ (bop:)
 
-> collectArg :: BufferedOperation -> BufferedArg -> [BufferedNode] -> GenState -> IO BufferedArg
-> collectArg bop barg nodeChoices st = do
->   arg <- case barg of   
->       Filled x    -> return $ Nothing
->       Abstract at -> case at of
->           S.Version _    -> chooseVersionArg    bop nodeChoices at st
->           S.NonVersion a -> chooseNonVersionArg bop nodeChoices at st
->   case arg of
->       Nothing     -> return barg
->       Just update -> return (Filled update)
+> chooseArgs :: BufferedOperation -> GenState -> IO (Maybe [BufferedArg])
+> chooseArgs bop st = do
+>   let filled = fillArgs bop st (validArgs bop st)
+>   let len = length filled
+>   if len > 0
+>       then do 
+>           ix <- R.chooseUniform (St.fromList [0..len-1])
+>           x <- filled !! ix
+>           return $ Just x
+>       else 
+>           return Nothing
 
-> chooseNonVersionArg :: BufferedOperation -> [BufferedNode] -> S.ArgType -> GenState -> IO (Maybe (S.Arg Int Int Int Bool))
-> chooseNonVersionArg _ _ (S.NonVersion nva) _ = do
+> fillArgs :: BufferedOperation -> GenState -> [[Maybe BufferedNode]] -> [IO [BufferedArg]]
+> fillArgs bop st allargs = do 
+>   args <- allargs
+>   return $ sequence $ collectArgs bop st args
+
+> collectArgs :: BufferedOperation -> GenState -> [Maybe BufferedNode] -> [IO BufferedArg]
+> collectArgs bop st bnodes = do
+>   (bnode, barg) <- zip bnodes (bop ^. bufArgs) 
+>   return $ do
+>       arg <- case barg of
+>           Filled _ -> return Nothing
+>           Abstract at -> case at of
+>               S.Version _ -> case bnode of
+>                   Just n -> return $ Just $ S.Version $ n ^. D.nodeIndex
+>                   Nothing -> return Nothing
+>               S.NonVersion _ -> chooseNonVersionArg bop at st
+>       case arg of
+>           Nothing     -> return barg
+>           Just update -> return (Filled update)
+
+> chooseNonVersionArg :: BufferedOperation -> S.ArgType -> GenState -> IO (Maybe D.DUGArg)
+> chooseNonVersionArg _ (S.NonVersion nva) _ = do
 >   case nva of
 >       S.IntArg       _ -> do
 >           n <- QC.generate (QC.arbitrary)
@@ -272,16 +296,14 @@ arguments in an infinite loop!
 >       S.BoolArg _ -> do
 >           b <- QC.generate (QC.arbitrary)
 >           return $ Just (S.NonVersion (S.BoolArg b))
-> 
-> -- TODO: 
-> chooseVersionArg :: BufferedOperation -> [BufferedNode] -> S.ArgType -> GenState -> IO (Maybe (S.Arg Int Int Int Bool))
-> chooseVersionArg bop nodes atype st =
->   if not (null nodes) then do
->       n <- QC.generate (QC.elements nodes)
->       return $ Just (S.Version (n ^. D.nodeIndex))
->   else 
->       return Nothing
->   
+ 
+ chooseVersionArg :: BufferedOperation -> [BufferedNode] -> S.ArgType -> GenState -> IO (Maybe (S.Arg Int Int Int Bool))
+ chooseVersionArg bop nodes atype st =
+   if not (null nodes) then do
+       n <- QC.generate (QC.elements nodes)
+       return $ Just (S.Version (n ^. D.nodeIndex))
+   else 
+       return Nothing
 
 The DUG is built up alongside its shadow
 This is done by attempting to "commit" the operation to the DUG
@@ -323,8 +345,8 @@ When committed it's important to move the new node into the correct buckets:
 >           if bop ^. bufOp ^. S.opSig ^. S.opType /= S.Observer 
 >               then
 >                   st
->                   & mutatorNodes . infants %~ (St.insert i)
->                   & observerNodes . infants %~ (St.insert i)
+>                   & mutatedNodes . infants %~ (St.insert i)
+>                   & observedNodes . infants %~ (St.insert i)
 >               else st
 > 
 >       -- if this new node is alive, add it to the living nodes
@@ -336,15 +358,19 @@ When committed it's important to move the new node into the correct buckets:
 >       -- when adding a new version, have to look at args and update their states
 >       -- specifically: adding an edge i -> j, means i is no longer an infant
 >       updateOldNodes [] st = st
->       updateOldNodes (arg:args) st = updateOldNodes args (updateNode arg st)
->       updateNode arg st = 
->           case (arg, bop ^. bufOp ^. S.opSig ^. S.opType) of
->               (S.Version i, S.Observer) -> 
->                   st & observerNodes %~ updateInfantNodes i
->               (S.Version i, S.Mutator) -> 
->                   st & mutatorNodes %~ updateInfantNodes i
->               _                      -> st
->           
+>       updateOldNodes (arg:args) st = 
+>           case arg of 
+>               S.Version    i -> updateOldNodes args (updateNodeState i bop st)
+>               S.NonVersion _ -> updateOldNodes args st
+> 
+> updateNodeState :: Int -> BufferedOperation -> GenState -> GenState
+> updateNodeState i bop st = 
+>     case (bop ^. bufOp ^. S.opSig ^. S.opType) of
+>         S.Observer -> st & observedNodes %~ updateInfantNodes i
+>         S.Mutator  -> st & mutatedNodes %~ updateInfantNodes i
+>         _          -> st
+>     
+> updateInfantNodes :: Int -> OperationNodes -> OperationNodes
 > updateInfantNodes i nodes | i `St.member` (nodes ^. infants) = 
 >     nodes & infants   %~ St.delete i
 >           & originals %~ St.insert i
@@ -353,7 +379,8 @@ When committed it's important to move the new node into the correct buckets:
 >     nodes & originals   %~ St.delete i
 >           & persistents %~ St.insert i
 > 
-> updateInfantNodes i nodes = nodes
+> updateInfantNodes i nodes | i `St.member` (nodes ^. persistents) = nodes
+> updateInfantNodes i nodes = error "updateInfantNodes :: invalid i"
 
 > runNode :: S.Implementation -> String -> [Dynamic] -> (Dynamic, S.ImplType)
 > runNode impl opName dynArgs = (dynResult dynFunc dynArgs, t)
@@ -412,32 +439,40 @@ The first thing to check is that there are enough nodes in the DUG to use as ver
 This happens before any arguments are ever chosen
 
 > -- choose a set of valid arguments for each Node
-> validArgs :: BufferedOperation -> GenState -> [[BufferedNode]]
-> validArgs bop st = do
->   v <- bop ^. bufArgs
->   return $ getNode st <$> nodes v
+> validArgs :: BufferedOperation -> GenState -> [[Maybe BufferedNode]]
+> validArgs bop s = go (bop ^. bufArgs) s
+>   where
+>       go [] st = return []
+>       go (v:vs) st = do
+>           a <- validNodes bop v st
+>           let st' = maybe st (\i -> updateNodeState i bop st) a
+>           let a' = getBufNode st <$> a
+>           as <- go vs st'
+>           return $ (a':as)
+>       getBufNode :: GenState -> Int -> BufferedNode
+>       getBufNode st i = ((st ^. dug ^. D.operations) M.! i) ^. _1
+> 
+> validNodes :: BufferedOperation -> BufferedArg -> GenState -> [Maybe Int]
+> validNodes bop barg st = 
+>     case (barg, bop ^. persistent, bop ^. bufOp ^. S.opSig ^. S.opType) of
+>         (Filled _, _, _) -> [Nothing]
+>         (Abstract (S.NonVersion _), _, _) -> [Nothing]
+>         (Abstract (S.Version    _), False, S.Observer) -> 
+>             {-# SCC "Version.non-persistent.observer" #-} Just <$> St.toList observerInfants
+>         (Abstract (S.Version    _), False, _) -> 
+>             {-# SCC "Version.non-persistent.mutator" #-} Just <$> (St.toList $ living `St.intersection` mutatorInfants)
+>         (Abstract (S.Version    _), True, S.Observer) -> 
+>             {-# SCC "Version.persistent.observer" #-} Just <$> (St.toList $ observerOriginals `St.union` observerPersistents)
+>         (Abstract (S.Version    _), True, _) -> 
+>            {-# SCC "Version.persistent.mutator" #-} Just <$> (St.toList $ living `St.intersection` (mutatorOriginals `St.union` mutatorPersistents))
 >   where
 >       living = st ^. livingNodes
->       observerInfants = st ^. observerNodes ^. infants
->       mutatorInfants = st ^. mutatorNodes ^. infants
->       observerOriginals = st ^. observerNodes ^. originals
->       mutatorOriginals = st ^. mutatorNodes ^. originals
->       observerPersistents = st ^. observerNodes ^. persistents
->       mutatorPersistents = st ^. mutatorNodes ^. persistents
->       getNode :: GenState -> Int -> BufferedNode
->       getNode st i = ((st ^. dug ^. D.operations) M.! i) ^. _1
->       nodes v = 
->           case (v, bop ^. persistent, bop ^. bufOp ^. S.opSig ^. S.opType) of
->               (Filled _, _, _) -> []
->               (Abstract (S.NonVersion _), _, _) -> []
->               (Abstract (S.Version    _), False, S.Observer) -> 
->                   {-# SCC "Generate.validArgs.nodes.Version.non-persistent.observer" #-} St.toList $ living `St.intersection` observerInfants
->               (Abstract (S.Version    _), False, _) -> 
->                   {-# SCC "Generate.validArgs.nodes.Version.non-persistent.mutator" #-} St.toList $ living `St.intersection` mutatorInfants
->               (Abstract (S.Version    _), True, S.Observer) -> 
->                   {-# SCC "Generate.validArgs.nodes.Version.persistent.observer" #-} St.toList $ living `St.intersection` (observerOriginals `St.union` observerPersistents)
->               (Abstract (S.Version    _), True, _) -> 
->                  {-# SCC "Generate.validArgs.nodes.Version.persistent.mutator" #-}  St.toList $ living `St.intersection` (mutatorOriginals `St.union` mutatorPersistents)
+>       observerInfants = st ^. observedNodes ^. infants
+>       mutatorInfants = st ^. mutatedNodes ^. infants
+>       observerOriginals = st ^. observedNodes ^. originals
+>       mutatorOriginals = st ^. mutatedNodes ^. originals
+>       observerPersistents = st ^. observedNodes ^. persistents
+>       mutatorPersistents = st ^. mutatedNodes ^. persistents
 
 
 > shadow2str :: Dynamic -> S.ImplType -> String
@@ -503,11 +538,20 @@ Ancillary generators
 
 There are also generators for a bunch of other Rufous types
 
+To generate profiles we generate a list of random numbers, then normalise to make it sum to 1. 
+The only trick here is that no applications in the DUG are applications of generators, so generating 
+a profile with a non-zero persistent weight for a generator is meaningless. So we don't do that.
+
 > generateProfile :: S.Signature -> IO P.Profile
 > generateProfile s = do
 >   mortality <- randomRIO (0.0, 1.0) 
->   weights <- generateMapWeights (s ^. S.operations & M.keys)
->   persistWeights <- generateMapWeights (s ^. S.operations & M.keys)
+>   let opNames = s ^. S.operations & M.keys
+>   weights <- generateMapWeights opNames
+>   let generators = filter ((== S.Generator) . S.operationType s) opNames
+>   let persistWeightsGenerators = generateFromPairs (generators `zip` repeat 0.0)
+>   let nonGenerators = filter (`notElem` generators) opNames
+>   persistWeightsOthers <- generateMapWeights nonGenerators
+>   let persistWeights = M.union persistWeightsGenerators persistWeightsOthers
 >   return $ P.Profile weights persistWeights mortality
 
 > generateMapWeights :: [String] -> IO (M.Map String Float)

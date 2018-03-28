@@ -74,6 +74,9 @@ Obtaining information from the Signature is very easy with some simple combinato
 > operationNames :: Signature -> [String]
 > operationNames s = M.keys $ s ^. operations
 
+> operationType :: Signature -> String -> OperationType
+> operationType s op = ((s ^. operations) M.! op) ^. opSig ^. opType 
+
 Signature specific operations over profiles
 ===========================================
 
