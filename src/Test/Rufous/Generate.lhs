@@ -538,19 +538,26 @@ Ancillary generators
 
 There are also generators for a bunch of other Rufous types
 
+Profiles are harder to generate, since a uniform distribution isn't ideal:
+    - Not all profiles are valid
+        - 100% mortality with non-zero weights for operations
+    - Not all profiles are useful
+        - 0% observation weights would force no work
+    - Not all applications want to generate the same set of profiles
+
 To generate profiles we generate a list of random numbers, then normalise to make it sum to 1. 
 The only trick here is that no applications in the DUG are applications of generators, so generating 
 a profile with a non-zero persistent weight for a generator is meaningless. So we don't do that.
 
 > generateProfile :: S.Signature -> IO P.Profile
 > generateProfile s = do
->   mortality <- randomRIO (0.0, 1.0) 
+>   mortality <- R.chooseUniform (St.fromList [0.0001, 0.001, 0.01, 0.05, 0.1, 0.2])
 >   let opNames = s ^. S.operations & M.keys
 >   weights <- generateMapWeights opNames
 >   let generators = filter ((== S.Generator) . S.operationType s) opNames
 >   let persistWeightsGenerators = generateFromPairs (generators `zip` repeat 0.0)
 >   let nonGenerators = filter (`notElem` generators) opNames
->   persistWeightsOthers <- generateMapWeights nonGenerators
+>   persistWeightsOthers <- generatePersistentProbabilities nonGenerators
 >   let persistWeights = M.union persistWeightsGenerators persistWeightsOthers
 >   return $ P.Profile weights persistWeights mortality
 
@@ -558,18 +565,24 @@ a profile with a non-zero persistent weight for a generator is meaningless. So w
 > generateMapWeights ss = do
 >   ps <- generateProbabilities (length ss)
 >   return $ generateFromPairs (ss `zip` ps)
->
+
 > generateProbabilities :: Int -> IO [Float]
 > generateProbabilities n = do
->       ps <- go n
+>       ps <- generateDistribution (randomRIO (0, 100)) n
 >       let n = sum ps
 >       return $ map (/ n) ps
->   where
->       go 0 = return []
->       go k = do
->           x <- randomRIO (0, 100)
->           xs <- go (k - 1)
->           return (x:xs)
+
+> generatePersistentProbabilities :: [String] -> IO (M.Map String Float)
+> generatePersistentProbabilities ss = do
+>   ps <- generateDistribution (R.chooseUniform (St.fromList [0.001, 0.01, 0.05, 0.1, 0.15, 0.25, 0.4, 0.5, 0.7])) (length ss)
+>   return $ generateFromPairs (ss `zip` ps)
+
+> generateDistribution :: IO Float -> Int -> IO [Float]
+> generateDistribution d 0 = return []
+> generateDistribution d k = do
+>   x <- d
+>   xs <- generateDistribution d (k - 1)
+>   return (x:xs)
 >           
 > generateFromPairs :: [(String, Float)] -> M.Map String Float
 > generateFromPairs pairs = go pairs M.empty
