@@ -55,20 +55,21 @@ A wrapped node stores the current node id and the list of nodes used to construc
 (the incoming edges in the DUG)
 
 > type ExtractArg t x = S.Arg (WrappedADT t x) x Int Bool
+> type UnwrappedArg t x = S.Arg (t x) x Int Bool
 > type ExtractedDUG = D.DUG ()
 > data WrappedADT t x =
 >   WrappedADT 
 >       { nodeId :: Int 
 >       , nodeArgs :: [ExtractArg t x]
 >       , nodeOp :: String
->       , value :: Either x (t x)  -- this is either an observeration node or an operation node
+>       , value :: UnwrappedArg t x
 >       }
 >   deriving (Show)
 
 > getVersion :: WrappedADT t x -> t x
 > getVersion w = case value w of
->   Right x -> x
->   Left _  -> error "getVersion :: expected Right"
+>   S.Version x -> x
+>   _  -> error "getVersion :: expected Version"
 
 During extraction, some global state must be maintained
 
@@ -87,7 +88,7 @@ During extraction, some global state must be maintained
 
 Then a set of logging functions can update the state in an unsafe way:
 
-> updateWrapper :: String -> [ExtractArg t x] -> Either x (t x) -> IO (WrappedADT t x)
+> updateWrapper :: String -> [ExtractArg t x] -> UnwrappedArg t x -> IO (WrappedADT t x)
 > updateWrapper name args v = do
 >   (ExtractorState m i) <- takeMVar state
 >   let w = WrappedADT i args name v
@@ -96,14 +97,20 @@ Then a set of logging functions can update the state in an unsafe way:
 >   return w
 
 > _log_operation :: String -> [ExtractArg t x] -> t x -> WrappedADT t x
-> _log_operation name args v = unsafePerformIO $ updateWrapper name args (Right v)
+> _log_operation name args v = unsafePerformIO $ updateWrapper name args (S.Version v)
 > {-# NOINLINE _log_operation #-}
 >   
 > _log_observer :: String -> [ExtractArg t x] -> x -> x
 > _log_observer name args v = unsafePerformIO $ do
->   updateWrapper name args (Left v)
+>   updateWrapper name args (S.NonVersion (S.VersionParam v))
 >   return v
 > {-# NOINLINE _log_observer #-}
+
+> _log_observer_nv :: String -> [ExtractArg t x] -> S.NVA x Int Bool -> c -> c
+> _log_observer_nv name args nva v = unsafePerformIO $ do
+>   updateWrapper name args (S.NonVersion nva)
+>   return v
+> {-# NOINLINE _log_observer_nv #-}
 
 > extractDUG :: S.Signature -> ExtractorState t x -> ExtractedDUG
 > extractDUG s state = insertNodes (sortOn nodeId (M.elems . nodes $ state)) D.emptyDug

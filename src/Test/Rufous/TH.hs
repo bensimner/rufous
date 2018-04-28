@@ -201,12 +201,13 @@ mkExtractorImplFromPair (name, args) = do
    let call = buildCall name' patterns
    let versionExps = patsToVersions patterns
    let versionsExp = expsToExp versionExps
-   if not . isVersion . last $ args then do
-      impl' <- [| _log_observer $nameLit $versionsExp $call |] 
-      return $ [FunD name' [Clause pats (NormalB $ impl') []]]
-   else do
-      impl' <- [| _log_operation $nameLit $versionsExp $call |] 
-      return $ [FunD name' [Clause pats (NormalB $ impl') []]]
+   impl' <- do
+      case last args of
+         Version _ -> [| _log_operation $nameLit $versionsExp $call |] 
+         NonVersion (VersionParam _) -> [| _log_observer $nameLit $versionsExp $call |] 
+         NonVersion (BoolArg k) -> [| let k' = $call in _log_observer_nv $nameLit $versionsExp (BoolArg k') k' |] 
+         NonVersion (IntArg k) -> [| let k' = $call in _log_observer_nv $nameLit $versionsExp (IntArg k') k' |] 
+   return $ [FunD name' [Clause pats (NormalB $ impl') []]]
 
 buildCall :: Name -> [(Pat, Arg Name Name Name Name)] -> Q Exp
 buildCall n xs = go xs [| $(return $ VarE n) |]
