@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Test.Rufous.TH (makeADTSignature) where
 
-import Lens.Micro ((^.), _1)
+import Control.Lens
 import qualified Data.Map as M
 
 import Data.List (isPrefixOf)
@@ -12,16 +12,16 @@ import Language.Haskell.TH.Syntax (showName)
 
 import Test.Rufous.Signature
 import Test.Rufous.Extract
+import Test.Rufous.Run
 
 import Control.Exception
-import Test.Rufous.Exceptions
 
 -- Classifying a list of args into a type is straightforward:
 
 isVersion (Version v) = True
 isVersion _ = False
 
-classifyArgs :: [ArgType] -> OperationType
+classifyArgs :: [ArgType] -> OperationCategory
 classifyArgs args =
    if not . isVersion $ last args then
       Observer
@@ -130,7 +130,7 @@ pairToQ (name, args) = do
    let mkClassifier' Mutator = [| Mutator |]
        mkClassifier' Generator = [| Generator |]
        mkClassifier' Observer = [| Observer |]
-   [| ($var, Operation $var (OperationSig $args' $(mkClassifier' classify) $retArg')) |]
+   [| ($var, Operation $var $retArg' $args' $(mkClassifier' classify)) |]
 
 -- i.e. ("[]", [("snoc", a->t a->t a, t a)])
 type InstanceBuilder = (Type, [(String, Type, Type)])

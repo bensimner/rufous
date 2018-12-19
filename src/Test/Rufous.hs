@@ -1,4 +1,7 @@
-module Test.Rufous(
+{-# LANGUAGE TemplateHaskell, FlexibleInstances #-}
+module Test.Rufous
+{-
+(
    -- Main API
      runRufous
    , mainWith
@@ -21,10 +24,9 @@ module Test.Rufous(
    , E.extract
 
    -- Generator Stage
-   , G.makeDUG
+   , G.generateDUG
 
    -- Evaluator Stage
-   , R.TimingDug
    , R.runDUG
 
    -- Select stage
@@ -33,11 +35,13 @@ module Test.Rufous(
    -- TH Constructor
    , TH.makeADTSignature
 )
+-}
 where
 
 import Control.Exception
-
-import Lens.Micro
+import Control.Lens
+import Debug.Trace
+import System.Random
 
 import Test.Rufous.Options as Opt
    ( RufousOptions(..), DebugOptions(..), debugFlag, debugOpt)
@@ -48,13 +52,17 @@ import Test.Rufous.Profile as P
 
 import Test.Rufous.Extract as E
 import Test.Rufous.Generate as G
-import Test.Rufous.Run as R
+--import Test.Rufous.Run as R
 import Test.Rufous.Select as Se
 
 import Test.Rufous.TH as TH
-import Test.Rufous.Exceptions as Ex
+--import Test.Rufous.Exceptions as Ex
 
-import Test.Rufous.Internal.Timing as T
+import Test.Rufous.Run as Ev
+
+import qualified Data.Map as M
+
+{-
 
 debugArgs = 
    DebugOptions 
@@ -107,7 +115,7 @@ mainWith :: RufousOptions -> IO ()
 mainWith args = do
    T.reset
    let s = signature args
-   profiles <- 
+   profiles <-
       if null (profiles args)
          then T.time "GENERATE PHASE (gen profiles)" $ mapM (const $ G.generateProfile s) [1..(numberOfTests args)]
          else return (profiles args)
@@ -152,3 +160,34 @@ dumpDugs2dot o (d:dugs) = do
 
 runRufous :: S.Signature -> IO ()
 runRufous s = mainWith args{signature=s}
+-}
+
+class ListADT t where
+   listcons :: a -> t a -> t a
+   listempty :: t a
+   listhead :: t a -> a
+
+instance ListADT [] where
+   listcons = (:)
+   listempty = []
+   listhead = head
+
+newtype ShadowList t = S Int
+instance ListADT ShadowList where
+   listcons _ (S i) = S (i + 1)
+   listempty = S 0
+   listhead (S 0) = throw GuardFailed
+   listhead (S i) = throw NotImplemented
+
+TH.makeADTSignature ''ListADT
+
+
+main = do
+   p <- S.randomProfile _ListADT
+   print p
+   d <- G.generateDUG _ListADT p 20
+   D.printDUG "test_dug" d
+   let impl = (_ListADT ^. S.implementations) !! 0
+   print impl
+   t <- Ev.run d impl
+   print t

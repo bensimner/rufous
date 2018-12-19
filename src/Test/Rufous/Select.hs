@@ -1,8 +1,7 @@
 {-# LANGUAGE TemplateHaskell, ExistentialQuantification #-}
 module Test.Rufous.Select where
 
-import Lens.Micro ((^.), (&), (%~), _1, _2, (^..))
-import Lens.Micro.TH (makeLenses)
+import Control.Lens
 
 import qualified Data.Map as M
 import Data.Time.Clock
@@ -12,22 +11,24 @@ import Data.List (intersperse)
 import qualified Test.Rufous.Options (RufousOptions(..))
 import qualified Test.Rufous.Profile as P
 import qualified Test.Rufous.DUG as D
-import qualified Test.Rufous.Run as R
+--import qualified Test.Rufous.Run as R
 import qualified Test.Rufous.Signature as S
 
 import System.IO.Unsafe
-import qualified Test.Rufous.Internal.Timing as T
 
 type ImplementationTimes = M.Map String NominalDiffTime
 
+printSummaryTable :: S.Signature -> [D.DUG] -> IO ()
+printSummaryTable = undefined
 
+select = undefined
+
+{-
 -- A "row" in the DUG timing tables
-{- 
  - dug:
  -    operation | count | impl1 total | impl1 avg | impl2 total | impl2 avg | ...
  -    ==========+=======+=============+===========+=============+===========+=====
  -    empty     | 3     | 12s         | 4s        | 6s          | 2s        | ...
- -}
 data TDUG = forall a. T {tdug :: R.TimingDug a}
 
 data OpRecord = 
@@ -40,12 +41,10 @@ data OpRecord =
 makeLenses ''OpRecord
 
 -- A "row" in the summary table
-{- 
  - summary:
  -    dug   | empty count | snoc count | head count | tail count | mortality | pmf | pof | impl1 | impl2 | impl3
  -    ======+=============+============+============+============+===========+=====+=====+=======+=======+=======
  -    dug 1 | 5           | 6          | 3          | 2          | 0.6       | 0.2 | 0.3 | 12s   | 4s    | 12s  
- -}
 data SummaryRecord = 
    SummaryRecord 
       { _dug :: TDUG
@@ -217,3 +216,4 @@ updateImpl (impl, ndiff) = M.adjust (\d -> d + ndiff) (impl ^. S.implName)
 -- assume k `elem` (keys m1) <==> k `elem` (keys m2)
 addMaps :: (Ord k, Num a) => M.Map k a -> M.Map k a -> M.Map k a
 addMaps m1 m2 = M.fromList [(k, (m1 M.! k) + (m2 M.! k)) | k <- M.keys m1]
+-}

@@ -16,7 +16,7 @@ data RufousOptions =
    RufousOptions
       { signature :: Signature
       , profiles :: [Profile]
-      , dugs :: [DUG d]
+      , dugs :: [DUG]
       , averageDugSize :: Int
       , numberOfTests :: Int
       , debug :: Bool
