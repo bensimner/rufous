@@ -32,7 +32,7 @@ data DUG =
 makeLenses ''DUG
 
 nodes :: DUG -> [Node]
-nodes d = d ^. operations ^.. traverse
+nodes d = d ^. operations & M.elems
 
 edges :: DUG -> [(Int, Int)]
 edges d = [(v, n ^. nodeId) | n <- nodes d, S.Version v <- n^.args]
@@ -40,8 +40,8 @@ edges d = [(v, n ^. nodeId) | n <- nodes d, S.Version v <- n^.args]
 edgesTo :: DUG -> Node -> [Int]
 edgesTo d n = [k | S.Version k <- n ^. args]
 
-edgesFrom :: DUG -> Int -> [Int]
-edgesFrom d i = [k | (j, k) <- edges d, j == i]
+edgesFrom :: DUG -> Node -> [Int]
+edgesFrom d i = [k | (j, k) <- edges d, j == i^.nodeId]
 
 -- | Create a new empty DUG with a given name
 emptyDUG :: String -> DUG
