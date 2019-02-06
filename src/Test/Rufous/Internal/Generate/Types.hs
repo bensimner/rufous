@@ -21,7 +21,7 @@ data PersistenceType = Persistent | Ephemeral
 -- to be assigned.  Or a concrete one tagged with its value (or node from the DUG).
 data BufferedArg =
      Abstract S.ArgType PersistenceType
-   | Concrete D.DUGArg
+   | Concrete D.DUGArg (Maybe PersistenceType)
    deriving (Show)
 
 -- | An operation as yet uncommitted to the DUG is 'buffered'.

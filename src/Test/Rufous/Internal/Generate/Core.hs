@@ -77,25 +77,30 @@ tryDeflate = do
 -- | Try to "deflate"  (i.e. fill and commit) a buffered operation.
 -- if success then add new node directly to DUG, and return True
 -- otherwise it places it back on the buffer and returns False.
-tryDeflateBop bop | satisifed bop          = doDeflate True (commitBop bop)
-tryDeflateBop bop | partiallySatisifed bop = doDeflate False (tryFillNVAs bop)
-tryDeflateBop bop = doDeflate False (trySatisfyAndPush bop)
-doDeflate b f = f >> return b
+tryDeflateBop bop | satisifed bop          = commitBop bop         >> return True
+tryDeflateBop bop | partiallySatisifed bop = tryFillNVAs bop       >> return False
+tryDeflateBop bop                          = trySatisfyAndPush bop >> return False
 
 
 -- | "commit" a buffered operation; adding it to the partially-built DUG.
 commitBop :: BufferedOperation -> GenState ()
 commitBop bop = do
-      result <- runShadow bop
-      case result of
-         R.RunSuccess _ -> cont
-         R.RunExcept R.NotImplemented -> cont
-         R.RunTypeMismatch -> error "Shadow type mismatch"
-         R.RunExcept R.GuardFailed ->
-            case bop^.life of
-               0 -> return ()
-               i -> abstractify bop{_life=i-1} >>= pushBuffer
-   where cont = do
+      validArgs <- checkDargs bop
+      if not validArgs then 
+         failure
+      else do
+         result <- runShadow bop
+         case result of
+            R.RunSuccess _ -> cont
+            R.RunExcept R.NotImplemented -> cont
+            R.RunTypeMismatch -> error "Shadow type mismatch"
+            R.RunExcept R.GuardFailed -> failure
+   where
+      failure =
+         case bop^.life of
+            0 -> return ()
+            i -> abstractify bop{_life=i-1} >>= pushBuffer
+      cont = do
          d <- use dug
          let nodeId = D.nextId d
          Just shadow <- makeShadow bop
@@ -105,8 +110,55 @@ commitBop bop = do
          if bop^.bufOp^.S.opCategory /= S.Observer && alive then
             living %= St.insert nodeId
          else return ()
+         commitDargs bop
          mutators  . infants %= MSt.insert nodeId
          observers . infants %= MSt.insert nodeId
+
+-- | Check all BufferedArg's point to a living node
+checkDargs :: BufferedOperation -> GenState Bool
+checkDargs bop =  do
+   living <- use living
+   let checks = map (checkDarg living) (bop^.bufArgs)
+   return $ and checks
+
+checkDarg :: St.Set Int -> BufferedArg -> Bool
+checkDarg living (Concrete (S.Version v) _) = v `St.member` living
+checkDarg _      (Concrete (S.NonVersion _) _) = True
+checkDarg _      (Abstract _ _) = error "checkDarg :: unexpected abstract arg"
+
+-- | Given a (committed) BufferedOperation, commit the arguments
+commitDargs :: BufferedOperation -> GenState ()
+commitDargs bop = do
+      mapM_ (commitDarg m) (bop^.bufArgs)
+   where m :: Lens' GenSt NodeBucket
+         m = case bop^.bufOp^.S.opCategory of
+             S.Mutator -> mutators
+             S.Observer -> observers
+             S.Generator -> error "commitDargs :: Generator has unexpected version arg"
+
+-- | Given a BufferedArg, commit it
+commitDarg :: Lens' GenSt NodeBucket -> BufferedArg -> GenState ()
+commitDarg m (Abstract _ _) = error "commitDarg :: unexpected abstract arg"
+commitDarg m (Concrete d pty) =
+   case pty of
+      Nothing -> return ()
+      Just Persistent -> commitPersistent m d
+      Just Ephemeral -> commitEphemeral m d
+
+commitPersistent :: Lens' GenSt NodeBucket -> D.DUGArg -> GenState ()
+commitPersistent m (S.NonVersion _) = error "commitPersistent :: unexpected Non-Version argument"
+commitPersistent m (S.Version v) = do
+   infs <- getBag m infants
+   pers <- getBag m persistents
+   if v `St.member` infs then do
+      m . infants %= MSt.delete v
+      m . persistents %= MSt.insert v
+   else return ()
+
+commitEphemeral :: Lens' GenSt NodeBucket -> D.DUGArg -> GenState ()
+commitEphemeral m (S.NonVersion _) = error "commitEphemeral :: unexpected Non-Version argument"
+commitEphemeral m (S.Version v) = do
+   living %= St.delete v
 
 abstractify :: BufferedOperation -> GenState BufferedOperation
 abstractify bop = do
@@ -114,7 +166,7 @@ abstractify bop = do
    return bop{_bufArgs=args}
 
 dugArgs :: BufferedOperation -> [D.DUGArg]
-dugArgs bop = [a | Concrete a <- bop^.bufArgs]
+dugArgs bop = [a | Concrete a _ <- bop^.bufArgs]
 
 makeShadow :: BufferedOperation -> GenState (Maybe Dynamic)
 makeShadow bop = do
@@ -132,28 +184,6 @@ runShadow bop = do
    Just shadowDyn <- makeShadow bop
    return $ unsafePerformIO $ R.runDynCell shadowImpl implt shadowDyn
 
--- | Given a BufferedOperation (which for example may have failed its guard)
--- free its arguments back to into the correct state
-freeArgs :: BufferedOperation -> GenState ()
-freeArgs bop =
-      if cat == S.Generator then
-         return ()
-      else do
-         _ <- sequence $ map (freeArg (f cat)) (dugArgs bop)
-         return ()
-   where cat = bop^.bufOp^.S.opCategory
-         f S.Observer = observers
-         f S.Mutator = mutators
-
-freeArg :: Lens' GenSt NodeBucket -> D.DUGArg -> GenState ()
-freeArg m (S.NonVersion _) = return () -- Nothing to free
-freeArg m (S.Version i) = do
-   m . persistents %= MSt.delete i
-   pers <- use (m . persistents)
-   if not (MSt.member i pers) then
-      m . infants %= MSt.insert i
-   else return ()
-
 
 -- | Satisfying an NVA is non-trivial, we assume we've already fixed version arguments
 -- all that's left is to generate some non-version ones.  However an arbtirary set of non-version arguments
@@ -168,7 +198,7 @@ tryFillNVAs bop = do
          R.RunSuccess _ -> pushBuffer bop'
          R.RunExcept R.NotImplemented -> pushBuffer bop'
          R.RunTypeMismatch -> error "Shadow type mismatch"
-         R.RunExcept R.GuardFailed -> freeArgs bop' >> pushBuffer bop
+         R.RunExcept R.GuardFailed -> pushBuffer bop
 
 -- | Satisfy as many of the operation's abstract version arguments as possible
 -- then place it back on the buffer.
@@ -180,26 +210,28 @@ trySatisfyAndPush bop = do
 
 -- | Satisfying each version argument involves pulling a node from the correct "bucket" of infant/persistent nodes.
 trySatisfyArg :: S.OperationCategory -> BufferedArg -> GenState BufferedArg
-trySatisfyArg _          (arg@(Concrete _)) = return arg
+trySatisfyArg _          (arg@(Concrete _ _)) = return arg
 trySatisfyArg _          (arg@(Abstract (S.NonVersion _) _)) = return arg
 trySatisfyArg S.Mutator  (aty@(Abstract (S.Version ()) p)) = satisfyVersionArg aty p mutators
 trySatisfyArg S.Observer (aty@(Abstract (S.Version ()) p)) = satisfyVersionArg aty p observers
 
 -- | Try satisfy a non-version argument
-trySatisfyNVArg (arg@(Concrete _)) = return arg
+trySatisfyNVArg (arg@(Concrete _ _)) = return arg
 trySatisfyNVArg (arg@(Abstract (S.NonVersion nva) _)) = satisfyNVA nva
 trySatisfyNVArg _ = error "trySatisfyNVArg :: passed a non- non-version-arg"
 
+-- TODO: This. Is. Terrible.
+nva n = Concrete (S.NonVersion n) Nothing
 satisfyNVA :: S.NVA () () () -> GenState BufferedArg
 satisfyNVA (S.IntArg _) = do
    i <- R.genRandomR (-10, 10)
-   return $ Concrete (S.NonVersion (S.IntArg i))
+   return $ nva (S.IntArg i)
 satisfyNVA (S.BoolArg _) = do
    i <- R.genRandomR (True, False)
-   return $ Concrete (S.NonVersion (S.BoolArg i))
+   return $ nva (S.BoolArg i)
 satisfyNVA (S.VersionParam _) = do  -- Monomorphise to Int
    i <- R.genRandomR (-10, 10)
-   return $ Concrete (S.NonVersion (S.VersionParam i))
+   return $ nva (S.VersionParam i)
 
 infixr 6 <||>
 m1 <||> m2 = do
@@ -210,19 +242,15 @@ m1 <||> m2 = do
 
 satisfyVersionArg :: BufferedArg -> PersistenceType -> Lens' GenSt NodeBucket -> GenState BufferedArg
 satisfyVersionArg aty Persistent bag = do
-   arg <-
-      join $ R.genUniform
-               [ pullFromInfants bag <||> pullFromPersistents bag
-               , pullFromPersistents bag
-               ]
+   arg <- pickFromPersistents bag
    case arg of
       Nothing -> return aty
-      Just nodeId -> return $ Concrete (S.Version nodeId)
+      Just nodeId -> return $ Concrete (S.Version nodeId) (Just Persistent)
 satisfyVersionArg aty Ephemeral bag = do
-   arg <- pullFromInfants bag
+   arg <- pickFromInfants bag
    case arg of
       Nothing -> return aty
-      Just nodeId -> return $ Concrete (S.Version nodeId)
+      Just nodeId -> return $ Concrete (S.Version nodeId) (Just Ephemeral)
 
 -- | Pull a nodeId from the infants set
 -- if no such node exists, then return Nothing
@@ -232,37 +260,25 @@ getBag m k = do
    living <- use living
    return $ living `St.intersection` (MSt.toSet bg)
 
-pullFromInfants :: Lens' GenSt NodeBucket -> GenState (Maybe Int)
-pullFromInfants m = do
+-- | Non-destructively pick an argument from the infants bag
+pickFromInfants :: Lens' GenSt NodeBucket -> GenState (Maybe Int)
+pickFromInfants m = do
    infs <- getBag m infants
    case St.size infs of
       0 -> return Nothing
       _ -> do
          x <- R.genUniformSet infs
-         m . infants %= MSt.delete x
          return $ Just x
 
--- | Pull a nodeId from the infants set and push it into the persistents set
--- if no such node exists, then return Nothing
-pullFromInfantsPersistent :: Lens' GenSt NodeBucket -> GenState (Maybe Int)
-pullFromInfantsPersistent m = do
-   infs <- getBag m infants
-   case St.size infs of
-      0 -> return Nothing
-      _ -> do
-         x <- R.genUniformSet infs
-         m . infants %= MSt.delete x
-         m . persistents %= MSt.insert x
-         return $ Just x
-
-
--- | Peek a nodeId from the persistents set
--- if no such node exists, then return Nothing
-pullFromPersistents :: Lens' GenSt NodeBucket -> GenState (Maybe Int)
-pullFromPersistents m = do
+-- | Non-destructively pick an argument from either the persistents or infants bag
+pickFromPersistents :: Lens' GenSt NodeBucket -> GenState (Maybe Int)
+pickFromPersistents m = do
    pers <- getBag m persistents
-   case St.size pers of
+   infs <- getBag m infants
+   let merged = pers `St.union` infs
+   case St.size merged of
       0 -> return Nothing
       _ -> do
-         v <- R.genUniformSet pers
-         return $ Just v
+         x <- R.genUniformSet merged
+         return $ Just x
+
