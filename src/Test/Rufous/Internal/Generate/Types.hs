@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell, RankNTypes #-}
 module Test.Rufous.Internal.Generate.Types where
 
 import Control.Monad.State
@@ -7,7 +7,9 @@ import System.Random (StdGen, mkStdGen)
 
 import qualified Data.Sequence as Sq
 import qualified Data.Set as St
+import qualified Data.Map as M
 
+import qualified Test.Rufous.Options as O
 import qualified Test.Rufous.DUG as D
 import qualified Test.Rufous.Profile as P
 import qualified Test.Rufous.Signature as S
@@ -44,6 +46,19 @@ data NodeBucket =
       }
 makeLenses ''NodeBucket
 
+data DebugInfo =
+   Dbg
+      { _failedGuards :: Int             -- the number of dtimes BufferedOperation's failed their guards
+      , _diedOfOldAge :: Int             -- the number of BufferedOperation's who died before leaving the buffer
+      , _deflateSteps :: Int             -- the total number of deflation steps
+      , _flatDeflateSteps :: Int         -- the number of deflate steps which failed to deflate anything.
+      , _noLivingNodes :: Int            -- the number of times a BuffereOperation couldn't be satisfied because there were no living nodes
+      , _inflatedOps :: M.Map String Int -- the number of times a BuffereOperation couldn't be satisfied because there were no living nodes
+      , _deadNodes :: Int                -- a count of the number of nodes that have died so far
+      }
+   deriving (Show)
+makeLenses ''DebugInfo
+
 -- | During generation there is a lot of state that is kept:
 --    - the current partially built DUG
 --    - the buffer of uncommitted operations
@@ -51,25 +66,45 @@ makeLenses ''NodeBucket
 -- Along with any options for the creation
 data GenSt =
    GenSt
-      { _sig :: S.Signature
+      { _opt :: O.RufousOptions
+      , _sig :: S.Signature
       , _profile :: P.Profile
       , _buffer :: Sq.Seq BufferedOperation
       , _dug :: D.DUG
       , _living :: St.Set Int
       , _mutators :: NodeBucket
       , _observers :: NodeBucket
+      , _nodeCounts :: M.Map Int Int
       , _gen :: StdGen
+      , _dbg :: DebugInfo
       }
 makeLenses ''GenSt
 
 -- | An empty node bucket has empty infant/persistent sets
 emptyNodeBucket = NodeBucket MSt.empty MSt.empty
 
-emptyGenSt :: S.Signature -> P.Profile -> String -> GenSt
-emptyGenSt s p name = GenSt s p Sq.empty d St.empty emptyNodeBucket emptyNodeBucket (mkStdGen 0)  -- TODO: seed it better...
+emptyGenSt :: O.RufousOptions -> S.Signature -> P.Profile -> String -> GenSt
+emptyGenSt o s p name = GenSt o s p Sq.empty d St.empty emptyNodeBucket emptyNodeBucket nc (mkStdGen 0) dbg  -- TODO: seed it better... 
    where d = D.emptyDUG name
+         dbg = Dbg 0 0 0 0 0 M.empty 0
+         nc = M.empty
 
 -- | The algorithm used here is stateful, and so we perform
 -- the transformations of the current gen-state imperatively in the
 -- state monad.
 type GenState r = State GenSt r
+
+-- TODO: do I neeed this generic type signature or can it just be (Int -> Int) ?
+debugIf :: Bool -> Lens' DebugInfo a -> (a -> a) -> GenState ()
+debugIf b m f =
+   if b then
+      updateDbg m f
+   else
+      return ()
+
+updateDbg :: Lens' DebugInfo a -> (a -> a) -> GenState ()
+updateDbg m f = do
+   opt <- use opt
+   if O.debug opt then
+      dbg . m %= f
+   else return ()

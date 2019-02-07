@@ -25,8 +25,8 @@ printDUG fName d = do
    write . unlines $ [show (n ^. nodeId) ++ "[label=\"" ++ nodeLabel n ++ "\"]"  | n <- nodes d]
    write . unlines $ [show from ++ "->" ++ show to  | (to, from) <- edges d]
    write "}"
-   createProcess (proc "neato" [dotName, "-Tpng", "-o", pngName])
+   createProcess (proc "neato" [dotName, "-Tpdf", "-o", pngName])
    return ()
    where write s = appendFile dotName (s ++ "\n")
          dotName = fName ++ ".dot"
-         pngName = fName ++ ".png"
+         pngName = fName ++ ".pdf"

@@ -57,3 +57,6 @@ pushNew op args shadow d =
    where
       newId = nextId d
       n = Node newId op args shadow
+
+size :: DUG -> Int
+size d = M.size $ d^.operations

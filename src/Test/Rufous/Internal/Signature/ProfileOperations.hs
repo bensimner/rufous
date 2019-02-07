@@ -25,22 +25,31 @@ pof s p = sum pofs / (fromIntegral (length pofs))
 -- | Generate a random Profile for a given Signature
 randomProfile :: Signature -> IO Profile
 randomProfile s = do
-      m <- randomRIO (0, 1)
+      m <- randomMortality
       let ops = (M.elems (s^.operations))
-      ps <- randomPers ops
+      ps <- randomPersistents ops
       ws <- randomWeights ops
       return $ Profile ws ps m
 
-randomMortality :: IO Float
-randomMortality = randomListIO [0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.6, 0.8]
-
-randomPers :: [Operation] -> IO (M.Map String Float)
-randomPers ops = do
+randomOps :: [Operation] -> IO Float -> IO (M.Map String Float)
+randomOps ops m = do
       pairs <- sequence $ map go ops
       return $ M.fromList pairs
    where go o = do
-            p <- randomListIO [0.001, 0.01, 0.05, 0.075, 0.1, 0.2, 0.5]
+            p <- m
             return (o^.opName, p)
+
+-- TODO: research+justify
+randomMortality :: IO Float
+randomMortality = randomListIO [0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.6, 0.8]
+
+-- TODO: research+justify
+randomPersistent :: IO Float
+randomPersistent = randomListIO [0.001, 0.01, 0.05, 0.075, 0.1, 0.2, 0.5]
+
+-- TODO: research+justify
+randomWeight :: IO Float
+randomWeight = randomRIO (0, 1)
 
 randomListIO :: [a] -> IO a
 randomListIO xs = do
@@ -48,16 +57,12 @@ randomListIO xs = do
    i <- randomRIO (0, n - 1)
    return $ xs !! i
 
-randomUniform :: [Operation] -> IO (M.Map String Float)
-randomUniform ops = do
-      pairs <- sequence $ map go ops
-      return $ M.fromList pairs
-   where go o = do
-            p <- randomRIO (0, 1)
-            return (o^.opName, p)
+randomPersistents :: [Operation] -> IO (M.Map String Float)
+randomPersistents ops = randomOps ops randomPersistent
 
 randomWeights :: [Operation] -> IO (M.Map String Float)
-randomWeights ops = do
-      pers <- randomUniform ops
-      let tot = sum (M.elems pers)
-      return $ M.fromList [(k, p/tot) | (k, p) <- M.toList pers]
+randomWeights ops = norm <$> randomOps ops randomWeight
+
+norm :: M.Map String Float -> M.Map String Float
+norm m = M.map (/ total) m
+   where total = sum $ M.elems m

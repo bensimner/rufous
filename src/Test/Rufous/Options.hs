@@ -12,7 +12,6 @@ import Test.Rufous.Profile
 import Test.Rufous.DUG
 
 data RufousOptions =
-   forall d.
    RufousOptions
       { signature :: Signature
       , profiles :: [Profile]

@@ -28,12 +28,16 @@ build :: Int -> GenState D.DUG
 build 0 = use dug
 build size = do
    inflate
-   tryDeflate
+   b <- tryDeflate
+   debugIf b flatDeflateSteps (+1)
    d <- use dug
-   () <- unsafePerformIO $ do
-            print $ "Step " ++ show size
-            D.printDUG ("test_dug_" ++ pad size) d
-            return (return ())
+   buf <- use buffer
+   living <- use living
+   stat <- use dbg
+   () <- return $ seq d $ unsafePerformIO $ do
+      if size `mod` 100 == 0 then do
+         putStrLn $ "Step " ++ show (size, D.size d, length buf, St.size living, stat)
+      else return ()
    build (size - 1)
 
 pad :: Int -> String
@@ -52,7 +56,8 @@ genBufferedOp = do
    let opName = op^.S.opName
    let Just op = st ^. sig . S.operations . at opName
    args <- sequence $ genAbstractArgs op
-   return $ BufferedOperation op args 2000
+   updateDbg inflatedOps (M.insertWith (+) opName 1)
+   return $ BufferedOperation op args 100 -- TODO: load from options
 
 genAbstractArgs :: S.Operation -> [GenState BufferedArg]
 genAbstractArgs op = genAbstractFromArgTy (op^.S.opName) <$> op^.S.opArgTypes
@@ -63,30 +68,30 @@ genAbstractFromArgTy opName ty = do
    pers <- R.genBool ((prof^.P.persistentApplicationWeights) M.! opName)
    return $ Abstract ty (if pers then Persistent else Ephemeral)
 
-tryDeflate :: GenState ()
+tryDeflate :: GenState Bool
 tryDeflate = do
+   updateDbg deflateSteps (+1)
    bops <- popBufferAll
    bs <- sequence $ map tryDeflateBop bops
    if or bs then do -- if we successfully created any new versions
-      tryDeflate    -- run again three times, once to try fill NVAs, once to fill VAs and once to try commit anything new
-      tryDeflate
-      tryDeflate
+      tryDeflate    -- then loop to see if we can satisfy any more
+      return True
    else
-      return ()
+      return False
 
--- | Try to "deflate"  (i.e. fill and commit) a buffered operation.
+-- | Try to "deflate"  (i.e. fill and/or commit) a buffered operation.
 -- if success then add new node directly to DUG, and return True
 -- otherwise it places it back on the buffer and returns False.
-tryDeflateBop bop | satisifed bop          = commitBop bop         >> return True
+tryDeflateBop bop | satisifed bop          = commitBop bop
 tryDeflateBop bop | partiallySatisifed bop = tryFillNVAs bop       >> return False
 tryDeflateBop bop                          = trySatisfyAndPush bop >> return False
 
 
 -- | "commit" a buffered operation; adding it to the partially-built DUG.
-commitBop :: BufferedOperation -> GenState ()
+commitBop :: BufferedOperation -> GenState Bool
 commitBop bop = do
       validArgs <- checkDargs bop
-      if not validArgs then 
+      if not validArgs then
          failure
       else do
          result <- runShadow bop
@@ -94,17 +99,30 @@ commitBop bop = do
             R.RunSuccess _ -> cont
             R.RunExcept R.NotImplemented -> cont
             R.RunTypeMismatch -> error "Shadow type mismatch"
-            R.RunExcept R.GuardFailed -> failure
+            R.RunExcept R.GuardFailed -> do
+               sequence $ do
+                  Concrete (S.Version v) _ <- bop^.bufArgs
+                  return $ do
+                     nc <- use nodeCounts
+                     let Just k = M.lookup v nc
+                     if k > 200 then --  TODO: move to options/settings
+                        kill v
+                     else
+                        nodeCounts %= M.update (Just . (+1)) v
+               updateDbg failedGuards (+1)
+               failure
    where
-      failure =
+      failure = do
          case bop^.life of
-            0 -> return ()
-            i -> abstractify bop{_life=i-1} >>= pushBuffer
+            0 -> updateDbg diedOfOldAge (+1)
+            i -> abstractify bop{_life=i-1} >>= pushBuffer -- maybe just drop?
+         return False
       cont = do
          d <- use dug
          let nodeId = D.nextId d
          Just shadow <- makeShadow bop
          dug %= D.pushNew (bop^.bufOp) (dugArgs bop) shadow
+         nodeCounts %= M.insert nodeId 0
          prof <- use profile
          alive <- R.genBool (1 - prof^.P.mortality)
          if bop^.bufOp^.S.opCategory /= S.Observer && alive then
@@ -113,6 +131,12 @@ commitBop bop = do
          commitDargs bop
          mutators  . infants %= MSt.insert nodeId
          observers . infants %= MSt.insert nodeId
+         return True
+
+kill :: Int -> GenState ()
+kill n = do
+   updateDbg deadNodes (+1)
+   living %= St.delete n
 
 -- | Check all BufferedArg's point to a living node
 checkDargs :: BufferedOperation -> GenState Bool
@@ -157,8 +181,7 @@ commitPersistent m (S.Version v) = do
 
 commitEphemeral :: Lens' GenSt NodeBucket -> D.DUGArg -> GenState ()
 commitEphemeral m (S.NonVersion _) = error "commitEphemeral :: unexpected Non-Version argument"
-commitEphemeral m (S.Version v) = do
-   living %= St.delete v
+commitEphemeral m (S.Version v) = kill v
 
 abstractify :: BufferedOperation -> GenState BufferedOperation
 abstractify bop = do
@@ -244,12 +267,16 @@ satisfyVersionArg :: BufferedArg -> PersistenceType -> Lens' GenSt NodeBucket ->
 satisfyVersionArg aty Persistent bag = do
    arg <- pickFromPersistents bag
    case arg of
-      Nothing -> return aty
+      Nothing -> do
+         updateDbg noLivingNodes (+1)
+         return aty
       Just nodeId -> return $ Concrete (S.Version nodeId) (Just Persistent)
 satisfyVersionArg aty Ephemeral bag = do
    arg <- pickFromInfants bag
    case arg of
-      Nothing -> return aty
+      Nothing -> do
+         updateDbg noLivingNodes (+1)
+         return aty
       Just nodeId -> return $ Concrete (S.Version nodeId) (Just Ephemeral)
 
 -- | Pull a nodeId from the infants set

@@ -46,7 +46,7 @@ import System.Random
 import Test.Rufous.Options as Opt
    ( RufousOptions(..), DebugOptions(..), debugFlag, debugOpt)
 
-import Test.Rufous.DUG as D
+import Test.Rufous.DUG as D hiding (args)
 import Test.Rufous.Signature as S
 import Test.Rufous.Profile as P
 
@@ -62,54 +62,26 @@ import Test.Rufous.Run as Ev
 
 import qualified Data.Map as M
 
-{-
-
-debugArgs = 
-   DebugOptions 
+debugArgs =
+   DebugOptions
       { dumpDugs=False
       , dumpDir="./"
-      , dumpPhaseTiming=True 
+      , dumpPhaseTiming=True
       , showNullTimes=True
       }
-args = 
-   RufousOptions 
+args =
+   RufousOptions
       { signature=error "args :: no signature specified"
       , profiles=[]
       , dugs=[]
       , averageDugSize=10
       , numberOfTests=1
       , debug=False
-      , debugOptions=debugArgs 
+      , debugOptions=debugArgs
       }
 
-runRufousOnDugs :: RufousOptions -> S.Signature -> [D.DUG a] -> IO ()
-runRufousOnDugs opts s dugs = do
-   let impls = s ^. S.nullImpl : s ^. S.implementations
-   runDugs <- T.time ("RUN PHASE") $ sequence $ map (R.runDUG impls) dugs
+{-
 
-   if (debugFlag dumpDugs opts) 
-      then dumpTimingDugs2dot opts runDugs
-      else return ()
-
-   let normalisedDugs = map (R.normaliseDug s) runDugs
-
-   timingDugs <- do
-      if debugFlag showNullTimes opts
-         then return runDugs
-         else return normalisedDugs
-
-   T.time ("SELECT PHASE") $ Se.select s timingDugs
-
-runRufousOnProfiles :: RufousOptions -> S.Signature -> [P.Profile] -> IO ()
-runRufousOnProfiles args s profiles = do
-   dugs <- mapM (\p -> {- T.time "GENERATE PHASE" $ -} makeDUG s p (averageDugSize args)) profiles
-   if (debugFlag dumpDugs args) 
-      then dumpDugs2dot args dugs
-      else return ()
-   
-   case args of
-      RufousOptions _ _ [] _ _ _ _ -> runRufousOnDugs args s dugs
-      RufousOptions _ _ ds _ _ _ _ -> runRufousOnDugs args s ds
 
 mainWith :: RufousOptions -> IO ()
 mainWith args = do
@@ -179,15 +151,50 @@ instance ListADT ShadowList where
    listhead (S 0) = throw GuardFailed
    listhead (S i) = throw NotImplemented
 
+data FakeList a = EF | F a (FakeList a)
+instance ListADT FakeList where
+   listcons y f = F y f
+   listempty = EF
+   listhead EF = undefined
+   listhead (F x _) = x
+
 TH.makeADTSignature ''ListADT
 
+runRufousOnDugs :: RufousOptions -> S.Signature -> [D.DUG] -> IO ()
+runRufousOnDugs opts s dugs = do
+   let impls = s ^. S.nullImpl : s ^. S.implementations
+   runDugs <- sequence $ map (\d -> sequence $ map (Ev.run d) impls) dugs
+   print "Done!"
+   -- Se.select s timingDugs
+
+runRufousOnProfiles :: RufousOptions -> S.Signature -> [P.Profile] -> IO ()
+runRufousOnProfiles args s profiles = do
+   dugs <- mapM (\p -> G.generateDUG args s p (averageDugSize args)) profiles
+
+   if debug args
+      then do
+         mapM_ (print . D.extractProfile s) dugs
+         mapM_ (\d -> D.printDUG ("test_dug_" ++ d^.name) d) dugs
+      else return ()
+
+   case args of
+      RufousOptions _ _ [] _ _ _ _ -> runRufousOnDugs args s dugs
+      RufousOptions _ _ ds _ _ _ _ -> runRufousOnDugs args s ds
+
+mainWith :: RufousOptions -> IO ()
+mainWith args = do
+   let s = signature args
+   print $ s ^. S.implementations
+   profiles <-
+      if null (profiles args)
+         then sequence (replicate (numberOfTests args) (S.randomProfile s))
+         else return (profiles args)
+
+   if debug args
+      then mapM_ print profiles
+      else return ()
+
+   runRufousOnProfiles args s profiles
 
 main = do
-   p <- S.randomProfile _ListADT
-   print p
-   d <- G.generateDUG _ListADT p 20
-   D.printDUG "test_dug" d
-   let impl = (_ListADT ^. S.implementations) !! 0
-   print impl
-   t <- Ev.run d impl
-   print t
+   mainWith args{signature=_ListADT}

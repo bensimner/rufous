@@ -35,7 +35,7 @@ run d impl = do
             case res of
                RunSuccess _ -> return (res, d)
                RunTypeMismatch -> error "Type mismatch!"
-               _ -> undefined -- TODO: rufous exceptions?
+               RunExcept e -> error (show e) -- TODO: rufous exceptions?
 
 buildImplDUG :: S.Implementation -> D.DUG -> D.DUG
 buildImplDUG impl d = newdug
@@ -69,7 +69,7 @@ runDynCell impl (S.ImplType t) d = run t fromDynamic
          run _ f = do
             case f d of
                Nothing -> return $ RunTypeMismatch
-               Just r  -> catch' $ RunSuccess r
+               Just r  -> catch' $ r `seq` RunSuccess r
          handleE :: RufousException -> IO RunResult
          handleE = return . RunExcept
-         catch' x = catch (x `seq` return x) handleE
+         catch' x = catch (return x) handleE
