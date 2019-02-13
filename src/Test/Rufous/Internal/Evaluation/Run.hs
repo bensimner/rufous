@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 module Test.Rufous.Internal.Evaluation.Run where
 
 import Control.Lens
@@ -69,7 +70,7 @@ runDynCell impl (S.ImplType t) d = run t fromDynamic
          run _ f = do
             case f d of
                Nothing -> return $ RunTypeMismatch
-               Just r  -> catch' $ r `seq` RunSuccess r
+               Just r  -> catch (g (RunSuccess r)) handleE
          handleE :: RufousException -> IO RunResult
          handleE = return . RunExcept
-         catch' x = catch (return x) handleE
+         g !x = return x
