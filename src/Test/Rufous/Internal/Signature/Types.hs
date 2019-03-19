@@ -60,6 +60,8 @@ instance Show Implementation where
   show (Implementation impl _) = "<" ++ impl ++ ">"
 instance Eq Implementation where
   i1 == i2 = i1^.implName == i2^.implName
+instance Ord Implementation where
+  i1 <= i2 = i1^.implName <= i2^.implName
 
 -- | A Shadow implementation is merely another implementation
 type ShadowImplementation = Implementation

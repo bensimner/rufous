@@ -3,7 +3,7 @@ module Test.Rufous.Profile where
 
 import Control.Lens
 import qualified Data.Map as M
-import Data.List (intercalate)
+import Data.List (intercalate, sortOn)
 
 -- | A 'Profile' contains a brief set of usage statistics for a datatype.
 -- Specifically there are 3 important statistics in this datatype:

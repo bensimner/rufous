@@ -44,7 +44,7 @@ import Debug.Trace
 import System.Random
 
 import Test.Rufous.Options as Opt
-   ( RufousOptions(..), DebugOptions(..), debugFlag, debugOpt)
+   ( RufousOptions(..), DebugOptions(..), debugFlag, debugOpt, args, debugArgs)
 
 import Test.Rufous.DUG as D hiding (args)
 import Test.Rufous.Signature as S
@@ -62,78 +62,7 @@ import Test.Rufous.Run as Ev
 
 import qualified Data.Map as M
 
-debugArgs =
-   DebugOptions
-      { dumpDugs=False
-      , dumpDir="./"
-      , dumpPhaseTiming=True
-      , showNullTimes=True
-      }
-args =
-   RufousOptions
-      { signature=error "args :: no signature specified"
-      , profiles=[]
-      , dugs=[]
-      , averageDugSize=10
-      , numberOfTests=1
-      , debug=False
-      , debugOptions=debugArgs
-      }
-
-{-
-
-
-mainWith :: RufousOptions -> IO ()
-mainWith args = do
-   T.reset
-   let s = signature args
-   profiles <-
-      if null (profiles args)
-         then T.time "GENERATE PHASE (gen profiles)" $ mapM (const $ G.generateProfile s) [1..(numberOfTests args)]
-         else return (profiles args)
-
-   if debug args
-      then mapM_ (putStrLn . P.prettyShowProfile) profiles
-      else return ()
-
-   runRufousOnProfiles args s profiles
-
-   if (debugFlag dumpPhaseTiming args)
-      then do 
-         c <- T.collect
-         putStrLn "Phase timings:"
-         mapM_ (\(name, t) -> putStrLn $ name ++ ": " ++ show t) c
-      else return ()
-
-guardFailed = throw Ex.GuardFailed
-shadowUndefined = throw Ex.NotImplemented
-
-infixr 3 </>
-p </> p2 =
-   case last p of
-      '/' -> p ++ p2
-      _ -> p ++ "/" ++ p2
-
-dumpTimingDugs2dot :: RufousOptions -> [R.TimingDug a] -> IO ()
-dumpTimingDugs2dot o [] = return ()
-dumpTimingDugs2dot o (d:dugs) = do 
-      D.dug2dot' d (\n -> (n ^. D.node & snd & map snd & show)) fName
-      dumpTimingDugs2dot o dugs
-   where name = maybe "dug" id (d ^. D.dugName)
-         fName = (dumpDir (debugOptions o)) </> name ++ "_timing"
-   
-dumpDugs2dot :: RufousOptions -> [G.GenDUG] -> IO ()
-dumpDugs2dot o [] = return ()
-dumpDugs2dot o (d:dugs) = do 
-      D.dug2dot d fName
-      dumpDugs2dot o dugs
-   where name = maybe "dug" id (d ^. D.dugName)
-         fName = (dumpDir (debugOptions o)) </> name
-
-runRufous :: S.Signature -> IO ()
-runRufous s = mainWith args{signature=s}
--}
-
+{- For Testing Purposes ... -}
 class ListADT t where
    listcons :: a -> t a -> t a
    listempty :: t a
@@ -160,13 +89,15 @@ instance ListADT FakeList where
 
 TH.makeADTSignature ''ListADT
 
+-- | runs Rufous on a set of DUGs to get timing info for each of them
 runRufousOnDugs :: RufousOptions -> S.Signature -> [D.DUG] -> IO ()
 runRufousOnDugs opts s dugs = do
-   let impls = s ^. S.nullImpl : s ^. S.implementations
-   runDugs <- sequence $ map (\d -> sequence $ map (Ev.run d) impls) dugs
-   print "Done!"
-   -- Se.select s timingDugs
+   let nul = s ^. S.nullImpl
+   let impls = s ^. S.implementations
+   results <- mapM (\d -> Ev.run s d nul impls) dugs
+   Se.select s results
 
+-- | runs Rufous on a set of Profile by generating DUGs
 runRufousOnProfiles :: RufousOptions -> S.Signature -> [P.Profile] -> IO ()
 runRufousOnProfiles args s profiles = do
    dugs <- mapM (\p -> G.generateDUG args s p (averageDugSize args)) profiles
@@ -174,13 +105,17 @@ runRufousOnProfiles args s profiles = do
    if debug args
       then do
          mapM_ (print . D.extractProfile s) dugs
-         mapM_ (\d -> D.printDUG ("test_dug_" ++ d^.name) d) dugs
+         mapM_ (\d -> D.printDUG ("output/" ++ d^.name) d) dugs
       else return ()
 
    case args of
       RufousOptions _ _ [] _ _ _ _ -> runRufousOnDugs args s dugs
       RufousOptions _ _ ds _ _ _ _ -> runRufousOnDugs args s ds
 
+-- | Entrypoint to Rufous
+--   With the default arguments this will run Rufous for some ADT,
+--   generating Profiles and DUGs and print a table of results
+--   with a generalised performance.
 mainWith :: RufousOptions -> IO ()
 mainWith args = do
    let s = signature args
@@ -197,4 +132,4 @@ mainWith args = do
    runRufousOnProfiles args s profiles
 
 main = do
-   mainWith args{signature=_ListADT}
+   mainWith args{signature=_ListADT, debug=True, averageDugSize=500}
