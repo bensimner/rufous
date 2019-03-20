@@ -14,6 +14,7 @@ import qualified Test.Rufous.Profile as P
 import qualified Test.Rufous.DUG as D
 import qualified Test.Rufous.Signature as S
 import qualified Test.Rufous.Run as R
+import qualified Test.Rufous.Aggregate as Agg
 
 import qualified Test.Rufous.Internal.Table as T
 
@@ -21,25 +22,28 @@ import System.IO.Unsafe
 
 -- | Given a list of annotated (normalised) DUGs perform a selection step
 -- which prints some information about the runtime
-select :: S.Signature -> [R.Result] -> IO ()
+select :: S.Signature -> [Agg.AggregatedResult] -> IO ()
 select s rs =
    let t = makeTable s rs in
    putStrLn $ T.render t
 
-makeTable :: S.Signature -> [R.Result] -> T.Table String
-makeTable s dugs = T.Table (makeHeader s) (map (\d -> makeRow s d) dugs)
+makeTable :: S.Signature -> [Agg.AggregatedResult] -> T.Table String
+makeTable s rs = T.Table (makeHeader s) (map (\r -> makeRow s r) rs)
 
 makeHeader :: S.Signature -> [String]
-makeHeader s = [op | op <- M.keys (s ^. S.operations)]
+makeHeader s = ["Ntests"]
+               ++ [op | op <- M.keys (s ^. S.operations)]
                ++ ["mortality"]
                ++ [i ^. S.implName | i <- s^.S.implementations]
 
-makeRow :: S.Signature -> R.Result -> [String]
-makeRow s r = [(getWeight p op) | op <- M.keys (s ^. S.operations)]
+makeRow :: S.Signature -> Agg.AggregatedResult -> [String]
+makeRow s ar = [show (length (ar ^. Agg.aggResults))]
+               ++ [(getWeight p op) | op <- M.keys (s ^. S.operations)]
                ++ [show (p^.P.mortality)]
                ++ [show ((tinfo^.R.times) M.! i) | i <- s^.S.implementations]
    where p = r ^. R.resultProfile
          tinfo = r ^. R.resultTimes
+         r = ar ^. Agg.aggResult
 
 getWeight p op =
    case M.lookup op (p ^. P.operationWeights) of

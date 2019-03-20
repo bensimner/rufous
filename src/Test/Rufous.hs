@@ -43,8 +43,9 @@ import Control.Lens
 import Debug.Trace
 import System.Random
 
+import qualified Data.Map as M
+
 import Test.Rufous.Options as Opt
-   ( RufousOptions(..), DebugOptions(..), debugFlag, debugOpt, args, debugArgs)
 
 import Test.Rufous.DUG as D hiding (args)
 import Test.Rufous.Signature as S
@@ -52,15 +53,14 @@ import Test.Rufous.Profile as P
 
 import Test.Rufous.Extract as E
 import Test.Rufous.Generate as G
---import Test.Rufous.Run as R
+import Test.Rufous.Run as R
 import Test.Rufous.Select as Se
 
 import Test.Rufous.TH as TH
 --import Test.Rufous.Exceptions as Ex
 
-import Test.Rufous.Run as Ev
 
-import qualified Data.Map as M
+import qualified Test.Rufous.Aggregate as Agg
 
 {- For Testing Purposes ... -}
 class ListADT t where
@@ -89,13 +89,21 @@ instance ListADT FakeList where
 
 TH.makeADTSignature ''ListADT
 
+
+-- | Aggregate a bunch of results into something more manageable to output
+rufousAggregate :: RufousOptions -> [R.Result] -> IO [Agg.AggregatedResult]
+rufousAggregate opts rs =
+   case aggregator opts of
+      Opt.KMeans -> Agg.aggregateKMeans (Opt.kmeansOptions (aggregationOptions opts)) rs
+
 -- | runs Rufous on a set of DUGs to get timing info for each of them
 runRufousOnDugs :: RufousOptions -> S.Signature -> [D.DUG] -> IO ()
 runRufousOnDugs opts s dugs = do
    let nul = s ^. S.nullImpl
    let impls = s ^. S.implementations
-   results <- mapM (\d -> Ev.run s d nul impls) dugs
-   Se.select s results
+   results <- mapM (\d -> R.run s d nul impls) dugs
+   agg <- rufousAggregate opts results
+   Se.select s agg
 
 -- | runs Rufous on a set of Profile by generating DUGs
 runRufousOnProfiles :: RufousOptions -> S.Signature -> [P.Profile] -> IO ()
@@ -109,8 +117,8 @@ runRufousOnProfiles args s profiles = do
       else return ()
 
    case args of
-      RufousOptions _ _ [] _ _ _ _ -> runRufousOnDugs args s dugs
-      RufousOptions _ _ ds _ _ _ _ -> runRufousOnDugs args s ds
+      RufousOptions _ _ [] _ _ _ _ _ _ -> runRufousOnDugs args s dugs
+      RufousOptions _ _ ds _ _ _ _ _ _ -> runRufousOnDugs args s ds
 
 -- | Entrypoint to Rufous
 --   With the default arguments this will run Rufous for some ADT,

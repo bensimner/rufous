@@ -1,7 +1,14 @@
 {-# LANGUAGE ExistentialQuantification #-}
-module Test.Rufous.Options 
+module Test.Rufous.Options
    ( RufousOptions(..)
    , DebugOptions(..)
+
+   -- | Aggregation Options
+   , AggregatorType(..)
+   , AggregationOptions(..)
+
+   -- | Aggreagtors
+   , KMeansOptions(..)
 
    -- | Mutators over Options
    , debugFlag
@@ -10,12 +17,16 @@ module Test.Rufous.Options
    -- | default option sets
    , debugArgs
    , args
+   , kmeansArgs
+   , aggregationArgs
    )
 where
 
 import qualified Test.Rufous.Signature as S
 import qualified Test.Rufous.Profile as P
 import qualified Test.Rufous.DUG as D
+
+import Test.Rufous.Internal.Aggregation.Types
 
 data RufousOptions =
    RufousOptions
@@ -26,6 +37,8 @@ data RufousOptions =
       , numberOfTests :: Int
       , debug :: Bool
       , debugOptions :: DebugOptions
+      , aggregationOptions :: AggregationOptions
+      , aggregator :: AggregatorType
       }
 
 data DebugOptions = 
@@ -60,4 +73,6 @@ args =
       , numberOfTests=100
       , debug=False
       , debugOptions=debugArgs
+      , aggregator=KMeans
+      , aggregationOptions=aggregationArgs
       }
