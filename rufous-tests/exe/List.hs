@@ -30,4 +30,4 @@ instance ListADT FakeList where
 makeADTSignature ''ListADT
 
 main :: IO ()
-main = mainWith args{signature=_ListADT, debug=False, averageDugSize=100, numberOfTests=100}
+main = mainWith args{signature=_ListADT}

@@ -9,7 +9,7 @@ import qualified Data.Sequence as Sq
 import qualified Data.Set as St
 import qualified Data.Map as M
 
-import qualified Test.Rufous.Options as O
+import qualified Test.Rufous.Options as Opt
 import qualified Test.Rufous.DUG as D
 import qualified Test.Rufous.Profile as P
 import qualified Test.Rufous.Signature as S
@@ -55,6 +55,7 @@ data DebugInfo =
       , _noLivingNodes :: Int            -- the number of times a BuffereOperation couldn't be satisfied because there were no living nodes
       , _inflatedOps :: M.Map String Int -- the number of times a BuffereOperation couldn't be satisfied because there were no living nodes
       , _deadNodes :: Int                -- a count of the number of nodes that have died so far
+      , _dbgTrace :: [String]
       }
    deriving (Show)
 makeLenses ''DebugInfo
@@ -66,7 +67,7 @@ makeLenses ''DebugInfo
 -- Along with any options for the creation
 data GenSt =
    GenSt
-      { _opt :: O.RufousOptions
+      { _opt :: Opt.RufousOptions
       , _sig :: S.Signature
       , _profile :: P.Profile
       , _buffer :: Sq.Seq BufferedOperation
@@ -86,10 +87,10 @@ emptyNodeBucket = NodeBucket MSt.empty MSt.empty
 
 -- | Create an empty gen state
 -- TODO: better seed...
-emptyGenSt :: O.RufousOptions -> S.Signature -> P.Profile -> String -> GenSt
+emptyGenSt :: Opt.RufousOptions -> S.Signature -> P.Profile -> String -> GenSt
 emptyGenSt o s p name = GenSt o s p Sq.empty d St.empty emptyNodeBucket emptyNodeBucket nc (mkStdGen 0) debug
    where d = D.emptyDUG name
-         debug = Dbg 0 0 0 0 0 M.empty 0
+         debug = Dbg 0 0 0 0 0 M.empty 0 []
          nc = M.empty
 
 -- | The algorithm used here is stateful, and so we perform
@@ -108,6 +109,13 @@ debugIf b m f =
 updateDbg :: Lens' DebugInfo a -> (a -> a) -> GenState ()
 updateDbg m f = do
    opts <- use opt
-   if O.debug opts then
+   if Opt.debug opts then
       dbg . m %= f
+   else return ()
+
+debugTrace :: String -> GenState ()
+debugTrace msg = do
+   opts <- use opt
+   if Opt.debug opts then
+      dbg . dbgTrace %= (msg:)
    else return ()

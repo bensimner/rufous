@@ -32,10 +32,9 @@ build size = do
    buf <- use buffer
    alive <- use living
    stat <- use dbg
-   () <- return $ seq d $ unsafePerformIO $ do
-      if size `mod` 100 == 0 then do
-         putStrLn $ "Step " ++ show (size, D.size d, length buf, St.size alive, stat)
-      else return ()
+   if size `mod` 100 == 0 then
+      debugTrace $ "Step " ++ show (size, D.size d, length buf, St.size alive, stat)
+   else return ()
    build (size - 1)
 
 pad :: Int -> String

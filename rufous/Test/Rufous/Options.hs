@@ -19,6 +19,12 @@ module Test.Rufous.Options
    , args
    , kmeansArgs
    , aggregationArgs
+
+
+   -- | Option-dependent functions
+   , doIf
+   , verboseTrace
+   , debugTrace
    )
 where
 
@@ -37,8 +43,10 @@ data RufousOptions =
       , numberOfTests :: Int
       , debug :: Bool
       , debugOptions :: DebugOptions
+      , genOptions :: GenOptions
       , aggregationOptions :: AggregationOptions
       , aggregator :: AggregatorType
+      , verbose :: Bool
       }
 
 data DebugOptions =
@@ -49,6 +57,9 @@ data DebugOptions =
       , showNullTimes :: Bool
    }
 
+data GenOptions =
+   GenOptions
+
 debugOpt :: (DebugOptions -> a) -> a -> RufousOptions -> a
 debugOpt f x r = if debug r then f (debugOptions r) else x
 
@@ -56,6 +67,9 @@ debugFlag :: (DebugOptions -> Bool) -> RufousOptions -> Bool
 debugFlag f r = debugOpt f False r
 
 {- Default Options -}
+genArgs :: GenOptions
+genArgs = GenOptions
+
 debugArgs :: DebugOptions
 debugArgs =
    DebugOptions
@@ -75,6 +89,20 @@ args =
       , numberOfTests=100
       , debug=False
       , debugOptions=debugArgs
+      , genOptions=genArgs
       , aggregator=KMeans
       , aggregationOptions=aggregationArgs
+      , verbose=False
       }
+
+
+{- Option-dependent Tracing Functions -}
+doIf :: (RufousOptions -> Bool) -> RufousOptions -> IO () -> IO ()
+doIf f opts a | f opts = a
+doIf _ _ _ = return ()
+
+verboseTrace :: RufousOptions -> String -> IO ()
+verboseTrace opts msg = doIf verbose opts (putStrLn msg)
+
+debugTrace :: RufousOptions -> String -> IO ()
+debugTrace opts msg = doIf debug opts (putStrLn msg)

@@ -73,15 +73,13 @@ runRufousOnProfiles :: Opt.RufousOptions -> S.Signature -> [P.Profile] -> IO ()
 runRufousOnProfiles opts s profiles = do
    dugs <- mapM (\p -> G.generateDUG opts s p (Opt.averageDugSize opts)) profiles
 
-   if Opt.debug opts
-      then do
-         mapM_ (print . D.extractProfile s) dugs
-         mapM_ (\d -> D.printDUG ("output/" ++ d^.D.name) d) dugs
-      else return ()
+   Opt.doIf Opt.debug opts $ do
+      mapM_ (print . D.extractProfile s) dugs
+      Opt.doIf (Opt.dumpDugs . Opt.debugOptions) opts $ mapM_ (\d -> D.printDUG ("output/" ++ d^.D.name) d) dugs
 
-   case opts of
-      Opt.RufousOptions _ _ [] _ _ _ _ _ _ -> runRufousOnDugs opts s dugs
-      Opt.RufousOptions _ _ ds _ _ _ _ _ _ -> runRufousOnDugs opts s ds
+   case Opt.dugs opts of
+      [] -> runRufousOnDugs opts s dugs
+      ds -> runRufousOnDugs opts s ds
 
 -- | Entrypoint to Rufous
 --   With the default arguments this will run Rufous for some ADT,
@@ -90,14 +88,14 @@ runRufousOnProfiles opts s profiles = do
 mainWith :: Opt.RufousOptions -> IO ()
 mainWith opts = do
    let s = Opt.signature opts
-   print $ s ^. S.implementations
+   Opt.verboseTrace opts ("Found implementations: " ++ show (s^.S.implementations))
+
    ps <-
       if null (Opt.profiles opts)
          then sequence (replicate (Opt.numberOfTests opts) (S.randomProfile s))
          else return (Opt.profiles opts)
 
-   if Opt.debug opts
-      then mapM_ print ps
-      else return ()
+   Opt.debugTrace opts "With Profiles: "
+   mapM_ (\p -> Opt.debugTrace opts ("\t" ++ show p)) ps
 
    runRufousOnProfiles opts s ps
