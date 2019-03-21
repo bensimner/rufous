@@ -33,11 +33,12 @@ zipTables t1 t2 = Table hd rs
          rs = map (uncurry zip) $ zip (rows t1) (rows t2)
 
 render :: Table String -> String
-render t = draw $ [drawRow (header padded), drawBar (header padded)] ++ (map drawRow (rows padded))
+render t = draw $ [drawBar "~" hd, drawRow hd, drawBar "+" hd] ++ (map drawRow (rows padded))
    where annotated = zipTables t (padding t)
+         hd = header padded
          padded = doPadding annotated
          drawRow r = intercalate "|" r
-         drawBar r = intercalate "+" [replicate (length c) '~' | c <- r]
+         drawBar c r = intercalate c [replicate (length c) '~' | c <- r]
          draw rs = intercalate "\n" rs
 
 doPadding :: Table (String, Int) -> Table String

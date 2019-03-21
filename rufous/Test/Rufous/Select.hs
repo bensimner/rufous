@@ -3,6 +3,11 @@ module Test.Rufous.Select where
 
 import Control.Lens
 
+import Text.Printf
+
+import Data.Fixed
+import Data.Time.Clock
+
 import qualified Data.Map as M
 
 import qualified Test.Rufous.Profile as P
@@ -24,14 +29,16 @@ makeTable s rs = T.Table (makeHeader s) (map (\r -> makeRow s r) rs)
 
 makeHeader :: S.Signature -> [String]
 makeHeader s = ["Ntests"]
-               ++ [opName | opName <- M.keys (s ^. S.operations)]
-               ++ ["mortality"]
+               ++ [show opName ++ " count" | opName <- M.keys (s ^. S.operations)]
+               ++ ["mortality", "pmf", "pof"]
                ++ [i ^. S.implName | i <- s^.S.implementations]
 
 makeRow :: S.Signature -> Agg.AggregatedResult -> [String]
 makeRow s ar = [show (length (ar ^. Agg.aggResults))]
                ++ [(getWeight p opName) | opName <- M.keys (s ^. S.operations)]
-               ++ [show (p^.P.mortality)]
+               ++ [ppFloat (p^.P.mortality)]
+               ++ [ppFloat (S.pmf s p)]
+               ++ [ppFloat (S.pof s p)]
                ++ [show ((tinfo^.R.times) M.! i) | i <- s^.S.implementations]
    where p = r ^. R.resultProfile
          tinfo = r ^. R.resultTimes
@@ -40,8 +47,14 @@ makeRow s ar = [show (length (ar ^. Agg.aggResults))]
 getWeight :: P.Profile -> String -> String
 getWeight p opName =
    case M.lookup opName (p ^. P.operationWeights) of
-      Just it -> show it
+      Just it -> ppFloat it
       Nothing -> "N/A"
+
+ppFloat :: Float -> String
+ppFloat k = printf "%.2f" k
+
+ppNDTime :: NominalDiffTime -> String
+ppNDTime t = show t
 
 {-
 -- A "row" in the DUG timing tables

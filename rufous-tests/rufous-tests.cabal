@@ -23,7 +23,7 @@ executable rufous-tests-example-queue
                        , rufous
   hs-source-dirs:      exe
   default-language:    Haskell2010
-  ghc-options:         -Wall
+  ghc-options:         -Wall -O2
 
 executable rufous-tests-example-list
   main-is:             List.hs
@@ -31,4 +31,4 @@ executable rufous-tests-example-list
                        , rufous
   hs-source-dirs:      exe
   default-language:    Haskell2010
-  ghc-options:         -Wall
+  ghc-options:         -Wall -O2

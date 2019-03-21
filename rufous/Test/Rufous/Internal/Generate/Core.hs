@@ -31,9 +31,9 @@ build size = do
    d <- use dug
    buf <- use buffer
    alive <- use living
-   stat <- use dbg
+--   stat <- use dbg
    if size `mod` 100 == 0 then
-      debugTrace $ "Step " ++ show (size, D.size d, length buf, St.size alive, stat)
+      debugTrace $ "Step " ++ show (size, D.size d, length buf, St.size alive) -- , stat)
    else return ()
    build (size - 1)
 
@@ -116,7 +116,7 @@ commitBop bop = do
       cont = do
          d <- use dug
          let nodeId = D.nextId d
-         Just shadow <- makeShadow bop
+         shadow <- makeShadow bop
          dug %= D.pushNew (bop^.bufOp) (dugArgs bop) shadow
          nodeCounts %= M.insert nodeId 0
          prof <- use profile
@@ -187,12 +187,12 @@ abstractify bop = do
 dugArgs :: BufferedOperation -> [D.DUGArg]
 dugArgs bop = [a | Concrete a _ <- bop^.bufArgs]
 
-makeShadow :: BufferedOperation -> GenState (Maybe Dynamic)
+makeShadow :: BufferedOperation -> GenState Dynamic
 makeShadow bop = do
    d <- use dug
    s <- use sig
    let Just shadow = s^.S.shadowImpl
-   return $ Just $ R.makeDynCell shadow d (bop^.bufOp) (dugArgs bop)
+   return $ R.makeDynCell shadow d (bop^.bufOp) (dugArgs bop)
 
 runShadow :: BufferedOperation -> GenState (R.RunResult)
 runShadow bop = do
@@ -200,7 +200,7 @@ runShadow bop = do
    let name = bop^.bufOp^.S.opName
    let Just shadowImpl = s^.S.shadowImpl
    let Just (_, implt) = shadowImpl^.S.implOperations^.at name
-   Just shadowDyn <- makeShadow bop
+   shadowDyn <- makeShadow bop
    return $ unsafePerformIO $ R.runDynCell shadowImpl implt shadowDyn
 
 

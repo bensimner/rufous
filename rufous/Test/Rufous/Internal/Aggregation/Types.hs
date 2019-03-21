@@ -25,14 +25,17 @@ data KMeansOptions =
    KMeansOptions
       { numMeans :: Int
       }
+   deriving (Show)
 
 data AggregatorType =
      KMeans
+   deriving (Show)
 
 data AggregationOptions =
    AggregationOptions
       { kmeansOptions :: KMeansOptions
       }
+   deriving (Show)
 
 -- | An 'AggregatedResult' is many results that have been placed into one 'Result' type
 data AggregatedResult =
@@ -40,6 +43,7 @@ data AggregatedResult =
       { _aggResults :: [Result]
       , _aggResult  :: Result
       }
+   deriving (Show)
 makeLenses ''AggregatedResult  -- the other types are not lensy so that the API is clean
 
 kmeansArgs :: KMeansOptions

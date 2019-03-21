@@ -6,6 +6,10 @@ import Control.Lens
 import System.Random
 import Control.Monad.State
 
+import Data.Foldable (toList)
+
+import qualified Data.Sequence as Sq
+
 import qualified Test.Rufous.Options as Opt
 import qualified Test.Rufous.Signature as S
 import qualified Test.Rufous.Profile as P
@@ -20,7 +24,7 @@ generateDUG o s p size = do
       name <- freshName
       let (a, s') = runState (build size) (emptyGenSt o s p name)
       if Opt.debug o then
-         mapM_ putStrLn (reverse (s'^.dbg^.dbgTrace))
+         mapM_ putStrLn (toList (s'^.dbg^.dbgTrace))
       else return ()
       return a
    where

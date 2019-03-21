@@ -57,22 +57,32 @@ shadowUndefined = throw R.NotImplemented
 rufousAggregate :: Opt.RufousOptions -> [R.Result] -> IO [Agg.AggregatedResult]
 rufousAggregate opts rs =
    case Opt.aggregator opts of
-      Opt.KMeans -> Agg.aggregateKMeans (Opt.kmeansOptions (Opt.aggregationOptions opts)) rs
+      Opt.KMeans -> do
+         Opt.verboseTrace opts $ "Using KMeans aggregation with " ++ show (Opt.aggregationOptions opts)
+         Agg.aggregateKMeans (Opt.kmeansOptions (Opt.aggregationOptions opts)) rs
 
 -- | runs Rufous on a set of DUGs to get timing info for each of them
 runRufousOnDugs :: Opt.RufousOptions -> S.Signature -> [D.DUG] -> IO ()
 runRufousOnDugs opts s dugs = do
    let nul = s ^. S.nullImpl
    let impls = s ^. S.implementations
+   Opt.verboseTrace opts ("Found Null Implementation: " ++ show nul)
    results <- mapM (\d -> R.run s d nul impls) dugs
+   Opt.verboseTrace opts ("Got " ++ show (length results) ++ " results")
    agg <- rufousAggregate opts results
    Se.select s agg
 
 -- | runs Rufous on a set of Profile by generating DUGs
 runRufousOnProfiles :: Opt.RufousOptions -> S.Signature -> [P.Profile] -> IO ()
 runRufousOnProfiles opts s profiles = do
-   dugs <- mapM (\p -> G.generateDUG opts s p (Opt.averageDugSize opts)) profiles
+   dugs <- sequence $ do
+               (i, p) <- zip [1..] profiles
+               return $ do
+                  Opt.verboseTrace opts $ "... " ++ show i ++ "/" ++ show (length profiles)
+                  G.generateDUG opts s p (Opt.averageDugSize opts)
+   Opt.verboseTrace opts ("Generated " ++ show (length dugs) ++ " random DUGs from those profiles")
 
+   Opt.debugTrace opts ("These DUGs have the following extracted profiles:")
    Opt.doIf Opt.debug opts $ do
       mapM_ (print . D.extractProfile s) dugs
       Opt.doIf (Opt.dumpDugs . Opt.debugOptions) opts $ mapM_ (\d -> D.printDUG ("output/" ++ d^.D.name) d) dugs
@@ -95,6 +105,7 @@ mainWith opts = do
          then sequence (replicate (Opt.numberOfTests opts) (S.randomProfile s))
          else return (Opt.profiles opts)
 
+   Opt.verboseTrace opts ("Generated " ++ show (length ps) ++ " random profiles")
    Opt.debugTrace opts "With Profiles: "
    mapM_ (\p -> Opt.debugTrace opts ("\t" ++ show p)) ps
 

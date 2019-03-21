@@ -12,6 +12,8 @@ import Test.Rufous.Profile
 -- pmf is the "persistent mutation factor" and pof is the "persistent observation factor".
 -- They give a weight to how often the mutators/observers are persistently applied over the
 -- entire DUG.
+-- Here we _approximate_ the Auburn pmf/pof by taking the average of individual pf's for all operations
+-- but this isn't precisely the same thing.
 pmf :: Signature -> Profile -> Float
 pmf s p = sum pmfs / (fromIntegral (length pmfs))
   where mutators = [k | (k, o) <- M.toList (s^.operations), Mutator == o^.opCategory]

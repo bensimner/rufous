@@ -48,6 +48,7 @@ data RufousOptions =
       , aggregator :: AggregatorType
       , verbose :: Bool
       }
+   deriving (Show)
 
 data DebugOptions =
    DebugOptions {
@@ -56,9 +57,11 @@ data DebugOptions =
       , dumpPhaseTiming :: Bool
       , showNullTimes :: Bool
    }
+   deriving (Show)
 
 data GenOptions =
    GenOptions
+   deriving (Show)
 
 debugOpt :: (DebugOptions -> a) -> a -> RufousOptions -> a
 debugOpt f x r = if debug r then f (debugOptions r) else x

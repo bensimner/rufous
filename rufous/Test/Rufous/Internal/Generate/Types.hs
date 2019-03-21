@@ -2,9 +2,10 @@
 module Test.Rufous.Internal.Generate.Types where
 
 import Control.Monad.State
-import Control.Lens
+import Control.Lens hiding ((|>))
 import System.Random (StdGen, mkStdGen)
 
+import Data.Sequence ((|>))
 import qualified Data.Sequence as Sq
 import qualified Data.Set as St
 import qualified Data.Map as M
@@ -55,7 +56,7 @@ data DebugInfo =
       , _noLivingNodes :: Int            -- the number of times a BuffereOperation couldn't be satisfied because there were no living nodes
       , _inflatedOps :: M.Map String Int -- the number of times a BuffereOperation couldn't be satisfied because there were no living nodes
       , _deadNodes :: Int                -- a count of the number of nodes that have died so far
-      , _dbgTrace :: [String]
+      , _dbgTrace :: Sq.Seq String       -- a trace of messages created during generation
       }
    deriving (Show)
 makeLenses ''DebugInfo
@@ -90,7 +91,7 @@ emptyNodeBucket = NodeBucket MSt.empty MSt.empty
 emptyGenSt :: Opt.RufousOptions -> S.Signature -> P.Profile -> String -> GenSt
 emptyGenSt o s p name = GenSt o s p Sq.empty d St.empty emptyNodeBucket emptyNodeBucket nc (mkStdGen 0) debug
    where d = D.emptyDUG name
-         debug = Dbg 0 0 0 0 0 M.empty 0 []
+         debug = Dbg 0 0 0 0 0 M.empty 0 Sq.empty
          nc = M.empty
 
 -- | The algorithm used here is stateful, and so we perform
@@ -117,5 +118,5 @@ debugTrace :: String -> GenState ()
 debugTrace msg = do
    opts <- use opt
    if Opt.debug opts then
-      dbg . dbgTrace %= (msg:)
+      dbg . dbgTrace %= (|> msg)
    else return ()
