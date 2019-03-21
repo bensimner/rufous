@@ -17,27 +17,18 @@ source-repository head
   type:     git
   location: https://github.com/bensimner/rufous
 
-library
-  exposed-modules:     Test.Rufous
-                       , Test.Rufous.DUG
-                       , Test.Rufous.Profile
-                       , Test.Rufous.Signature
-                       , Test.Rufous.Extract
-                       , Test.Rufous.Generate
-                       , Test.Rufous.Run
-                       , Test.Rufous.Select
-                       , Test.Rufous.TH
-                       , Test.Rufous.Options
-
+executable rufous-tests-example-queue
+  main-is:             Queue.hs
   build-depends:       base
                        , rufous
-  hs-source-dirs:      lib
+  hs-source-dirs:      exe
   default-language:    Haskell2010
   ghc-options:         -Wall
 
-executable rufous-tests
-  main-is:             Queue.hs
-  build-depends:       rufous-tests
+executable rufous-tests-example-list
+  main-is:             List.hs
+  build-depends:       base
+                       , rufous
   hs-source-dirs:      exe
   default-language:    Haskell2010
   ghc-options:         -Wall

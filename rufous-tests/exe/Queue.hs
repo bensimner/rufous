@@ -3,9 +3,8 @@ module Main where
 import Prelude hiding (head, tail)
 import qualified Prelude as P
 
-import Test.Rufous 
+import Test.Rufous
    ( makeADTSignature
-   , runRufous
    , mainWith
    , args
    , RufousOptions(..)
@@ -76,4 +75,5 @@ instance Queue ShadowQueue where
 
 makeADTSignature ''Queue
 
+main :: IO ()
 main = mainWith args{signature=_Queue, averageDugSize=100, numberOfTests=10}

@@ -1,14 +1,12 @@
 {-# LANGUAGE TemplateHaskell, FlexibleInstances #-}
 module Test.Rufous
-{-
 (
    -- Main API
-     runRufous
-   , mainWith
-   , RufousOptions(..)
-   , DebugOptions(..)
-   , args
-   , debugArgs
+     mainWith
+   , Opt.RufousOptions(..)
+   , Opt.DebugOptions(..)
+   , Opt.args
+   , Opt.debugArgs
 
    , guardFailed
    , shadowUndefined
@@ -19,29 +17,14 @@ module Test.Rufous
    , D.DUG
    , P.Profile
 
-
-   -- Extractor Stage
-   , E.extract
-
-   -- Generator Stage
-   , G.generateDUG
-
-   -- Evaluator Stage
-   , R.runDUG
-
-   -- Select stage
-   , Se.select
-
    -- TH Constructor
    , TH.makeADTSignature
 )
--}
 where
 
 import Control.Exception
 import Control.Lens
 
-import Test.Rufous.Options (args)
 import qualified Test.Rufous.Options as Opt
 
 import qualified Test.Rufous.DUG as D
@@ -51,37 +34,23 @@ import qualified Test.Rufous.Generate as G
 import qualified Test.Rufous.Run as R
 import qualified Test.Rufous.Select as Se
 import qualified Test.Rufous.TH as TH
---import Test.Rufous.Exceptions as Ex
-
-
 import qualified Test.Rufous.Aggregate as Agg
 
-{- For Testing Purposes ... -}
-class ListADT t where
-   listcons :: a -> t a -> t a
-   listempty :: t a
-   listhead :: t a -> a
+-- | Case for guard on a shadow operation failing
+--
+-- example:
+-- instance ListADT ShadowList where
+--    listhead (Shadow 0) = guardFailed
+guardFailed :: a
+guardFailed = throw R.GuardFailed
 
-instance ListADT [] where
-   listcons = (:)
-   listempty = []
-   listhead = head
-
-newtype ShadowList t = S Int
-instance ListADT ShadowList where
-   listcons _ (S i) = S (i + 1)
-   listempty = S 0
-   listhead (S 0) = throw R.GuardFailed
-   listhead (S _) = throw R.NotImplemented
-
-data FakeList a = EF | F a (FakeList a)
-instance ListADT FakeList where
-   listcons y f = F y f
-   listempty = EF
-   listhead EF = undefined
-   listhead (F x _) = x
-
-TH.makeADTSignature ''ListADT
+-- | Case for an operation on a shadow operation that is not defined over shadows
+--
+-- example:
+-- instance ListADT ShadowList where
+--    listhead (Shadow 1) = shadowUndefined
+shadowUndefined :: a
+shadowUndefined = throw R.NotImplemented
 
 
 -- | Aggregate a bunch of results into something more manageable to output
@@ -132,11 +101,3 @@ mainWith opts = do
       else return ()
 
    runRufousOnProfiles opts s ps
-
-main :: IO ()
-main = do
-   mainWith args{Opt.signature=_ListADT, Opt.debug=True, Opt.averageDugSize=500}
-
-main' :: IO ()
-main' = do
-   mainWith args{Opt.signature=_ListADT, Opt.debug=True, Opt.averageDugSize=50, Opt.numberOfTests=50}
