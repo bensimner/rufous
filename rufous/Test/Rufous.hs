@@ -40,8 +40,6 @@ where
 
 import Control.Exception
 import Control.Lens
-import Debug.Trace
-import System.Random
 
 import qualified Data.Map as M
 
@@ -51,7 +49,7 @@ import Test.Rufous.DUG as D hiding (args)
 import Test.Rufous.Signature as S
 import Test.Rufous.Profile as P
 
-import Test.Rufous.Extract as E
+-- import Test.Rufous.Extract as E
 import Test.Rufous.Generate as G
 import Test.Rufous.Run as R
 import Test.Rufous.Select as Se

@@ -1,12 +1,11 @@
 module Test.Rufous.Internal.Generate.Random where
 
+import Control.Lens
+
 import System.Random
 import qualified Data.Set as St
 import qualified Data.Map as M
 import qualified Data.List as L
-
-import Control.Monad.State
-import Control.Lens
 
 import Test.Rufous.Internal.Generate.Types
 

@@ -5,8 +5,6 @@ where
 
 import Control.Lens
 
-import Debug.Trace
-
 import System.Random (randomRIO)
 
 import Data.List (sortOn, transpose)
@@ -14,7 +12,6 @@ import Data.List (sortOn, transpose)
 import qualified Data.Map as M
 
 import qualified Test.Rufous.Profile as P
-import qualified Test.Rufous.Signature as S
 import qualified Test.Rufous.Run as R
 
 import Test.Rufous.Internal.Aggregation.Types

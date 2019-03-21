@@ -5,9 +5,6 @@ import Data.Dynamic (Dynamic, Typeable)
 import Control.Lens
 
 import qualified Data.Map as M
-import qualified Data.Set as S
-
-import qualified Test.Rufous.Profile as P
 
 data Null x = NullImpl
   deriving (Show, Eq, Typeable)

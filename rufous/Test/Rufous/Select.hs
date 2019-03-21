@@ -4,21 +4,13 @@ module Test.Rufous.Select where
 import Control.Lens
 
 import qualified Data.Map as M
-import Data.Time.Clock
 
-import Data.List (intersperse)
-import Data.Maybe (isNothing)
-
-import qualified Test.Rufous.Options (RufousOptions(..))
 import qualified Test.Rufous.Profile as P
-import qualified Test.Rufous.DUG as D
 import qualified Test.Rufous.Signature as S
 import qualified Test.Rufous.Run as R
 import qualified Test.Rufous.Aggregate as Agg
 
 import qualified Test.Rufous.Internal.Table as T
-
-import System.IO.Unsafe
 
 -- | Given a list of annotated (normalised) DUGs perform a selection step
 -- which prints some information about the runtime

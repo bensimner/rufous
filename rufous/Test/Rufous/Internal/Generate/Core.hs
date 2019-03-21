@@ -3,12 +3,12 @@ module Test.Rufous.Internal.Generate.Core where
 
 import Control.Applicative
 import Control.Monad
-import Control.Monad.State
 import Control.Lens
-import Debug.Trace
 
 import Data.Dynamic
 import System.IO.Unsafe
+
+import Control.Monad.State (get)
 
 import qualified Data.Map as M
 import qualified Data.Set as St

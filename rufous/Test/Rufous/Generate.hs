@@ -4,9 +4,6 @@ module Test.Rufous.Generate where
 import System.Random
 import Control.Monad.State
 
-import qualified Data.Map as M
-import qualified Data.Set as St
-
 import qualified Test.Rufous.Options as O
 import qualified Test.Rufous.Signature as S
 import qualified Test.Rufous.Profile as P
