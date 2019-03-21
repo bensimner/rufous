@@ -24,21 +24,22 @@ makeTable s rs = T.Table (makeHeader s) (map (\r -> makeRow s r) rs)
 
 makeHeader :: S.Signature -> [String]
 makeHeader s = ["Ntests"]
-               ++ [op | op <- M.keys (s ^. S.operations)]
+               ++ [opName | opName <- M.keys (s ^. S.operations)]
                ++ ["mortality"]
                ++ [i ^. S.implName | i <- s^.S.implementations]
 
 makeRow :: S.Signature -> Agg.AggregatedResult -> [String]
 makeRow s ar = [show (length (ar ^. Agg.aggResults))]
-               ++ [(getWeight p op) | op <- M.keys (s ^. S.operations)]
+               ++ [(getWeight p opName) | opName <- M.keys (s ^. S.operations)]
                ++ [show (p^.P.mortality)]
                ++ [show ((tinfo^.R.times) M.! i) | i <- s^.S.implementations]
    where p = r ^. R.resultProfile
          tinfo = r ^. R.resultTimes
          r = ar ^. Agg.aggResult
 
-getWeight p op =
-   case M.lookup op (p ^. P.operationWeights) of
+getWeight :: P.Profile -> String -> String
+getWeight p opName =
+   case M.lookup opName (p ^. P.operationWeights) of
       Just it -> show it
       Nothing -> "N/A"
 

@@ -48,6 +48,9 @@ doPadding t = Table hd rs
          hd = padRow (header t)
          rs = map padRow (rows t)
 
+-- Split a padding of N total whitespace chars into (K, L) chars
+-- such that K + L == N
+splitPad :: Int -> (Int, Int)
 splitPad p =
    if (p `mod` 2) == 0 then
       (p `div` 2, p `div` 2)

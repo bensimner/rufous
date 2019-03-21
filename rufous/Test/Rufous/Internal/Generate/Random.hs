@@ -40,8 +40,9 @@ genAccordingTo :: Ord k => M.Map k Float -> M.Map k v -> GenState v
 genAccordingTo ps vs = do
       p <- genRandomR (0, 1)
       return $ go (accordingToSortByValue ps) p
-   where go ((x,v):xs) p | p <= v = vs M.! x
-         go ((x,v):xs) p | p > v = go xs (p - v)
+   where go ((x,v):_) p | p <= v = vs M.! x
+         go ((_,v):xs) p | p > v = go xs (p - v)
+         go _ _ = error "empty map"
 
 accordingToSortByValue :: M.Map k Float -> [(k, Float)]
 accordingToSortByValue vs = L.sortOn snd (M.toList vs)

@@ -31,6 +31,9 @@ data DUG =
    deriving (Show)
 makeLenses ''DUG
 
+nodeAt :: DUG -> Int -> Node
+nodeAt d i = (d^.operations) M.! i
+
 nodes :: DUG -> [Node]
 nodes d = d ^. operations & M.elems
 
@@ -38,25 +41,25 @@ edges :: DUG -> [(Int, Int)]
 edges d = [(v, n ^. nodeId) | n <- nodes d, S.Version v <- n^.args]
 
 edgesTo :: DUG -> Node -> [Int]
-edgesTo d n = [k | S.Version k <- n ^. args]
+edgesTo _ n = [k | S.Version k <- n ^. args]
 
 edgesFrom :: DUG -> Node -> [Int]
 edgesFrom d i = [k | (j, k) <- edges d, j == i^.nodeId]
 
 -- | Create a new empty DUG with a given name
 emptyDUG :: String -> DUG
-emptyDUG name = DUG name M.empty
+emptyDUG dugName = DUG dugName M.empty
 
 nextId :: DUG -> Int
 nextId = length . nodes
 
 -- | Create and insert a new Node
 pushNew :: S.Operation -> [DUGArg] -> Dynamic -> DUG -> DUG
-pushNew op args shadow d =
-      d & operations . at newId ?~ n
+pushNew o dargs dyn dug =
+      dug & operations . at newId ?~ n
    where
-      newId = nextId d
-      n = Node newId op args shadow
+      newId = nextId dug
+      n = Node newId o dargs dyn
 
 size :: DUG -> Int
 size d = M.size $ d^.operations

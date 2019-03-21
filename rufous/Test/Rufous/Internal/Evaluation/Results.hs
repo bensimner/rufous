@@ -8,7 +8,6 @@ import Control.Lens
 import qualified Data.Map as M
 
 import qualified Test.Rufous.Profile as P
-import qualified Test.Rufous.DUG as D
 
 import Test.Rufous.Internal.Evaluation.Types
 

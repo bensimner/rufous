@@ -20,14 +20,11 @@ aggregateKMeans :: KMeansOptions -> [R.Result] -> IO [AggregatedResult]
 aggregateKMeans opts rs = do
       let n = numMeans opts
       initClusters <- makeInitClusters n rs
-      let clusters = kmeans n rs initClusters
+      let clusters = kmeans rs initClusters
       let groups = allocateGroups rs clusters
       let merged = map mergeGroup groups
       return merged
 
-
-assert p s _ | not p = error s
-assert _ _ k = k
 
 mergeGroup :: [R.Result] -> AggregatedResult
 mergeGroup rs = AggregatedResult rs r'
@@ -43,18 +40,13 @@ makeInitClusters nclusters rs =
          diff vs = (minimum vs, maximum vs)
 
 generateInitCluster :: [R.Result] -> [(Float, Float)] -> IO [Float]
-generateInitCluster rs diffs = do
+generateInitCluster rs _ = do
       i <- randomRIO (0, length vecs - 1)
-      let v = vecs !! i
-      -- mapM diff (zip v diffs)
-      return v
+      return $ vecs !! i
    where vecs = map vec rs
-         diff (f, (m, n)) = do
-            d <- randomRIO (m, n)
-            return $ f + d
 
-kmeans :: Int -> [R.Result] -> [[Float]] -> [[Float]]
-kmeans nclusters rs init = go init
+kmeans :: [R.Result] -> [[Float]] -> [[Float]]
+kmeans rs initClusters = go initClusters
    where
       go c =
         case kmeansIter rs c of
@@ -71,9 +63,6 @@ kmeansIter rs clusters = clusters'
 orderedElems :: M.Map String a -> [a]
 orderedElems m = map snd (orderedPairs m)
 
-orderedKeys :: M.Map String a -> [String]
-orderedKeys m = map fst (orderedPairs m)
-
 orderedPairs :: M.Map String a -> [(String, a)]
 orderedPairs m = sortOn fst (M.toList m)
 
@@ -88,9 +77,11 @@ centre :: [[Float]] -> [Float]
 centre vecs = map (/ n) $ map sum (transpose vecs)
    where n = fromIntegral (length vecs)
 
+isNear :: [Float] -> [Float] -> Bool
 isNear v1 v2 =
    all (uncurry isFNear) (zip v1 v2)
 
+isFNear :: Float -> Float -> Bool
 isFNear f1 f2 =
       (isNaN f1 && isNaN f2)
    || (abs (f1 - f2) < 0.01)
@@ -104,17 +95,18 @@ allocateGroups rs clusters = allocated
 
 partition :: [(R.Result, [Float])] -> [[Float]] -> [[R.Result]]
 partition pairs clusters = partPairs ordered
-   where tagged = [(p, i) | (p, alloc) <- pairs, (i, cluster) <- find alloc (ranged clusters)]
+   where tagged = [(p, i) | (p, alloc) <- pairs, (i, _) <- find alloc (ranged clusters)]
          ordered = sortOn snd tagged
 
-find v [] = []
-find v ((i,c):cs) | isNear v c = [(i,c)]
+find :: [Float] -> [(Int, [Float])] -> [(Int, [Float])]
+find _ [] = []
+find v ((i,c):_) | isNear v c = [(i,c)]
 find v (_:cs) = find v cs
 
 partPairs :: [(a, Int)] -> [[a]]
 partPairs vs = go vs []
    where go [] x = [x]
-         go [(a,i)] x = [a:x]
+         go [(a,_)] x = [a:x]
          go ((a,i):(b,j):xs) x =
             if i == j then
                go ((b,j):xs) (a:x)
@@ -129,7 +121,7 @@ allocate fs r = snd m
          m = minimum pairs
 
 dist :: [Float] -> [Float] -> Float
-dist x y = sum $ map (\(a,b) -> (b - a)^2) (zip x y)
+dist x y = sum $ map (\(a,b) -> (b - a)^(2 :: Int)) (zip x y)
 
 ranged :: [a] -> [(Int, a)]
 ranged xs = zip [0..] xs

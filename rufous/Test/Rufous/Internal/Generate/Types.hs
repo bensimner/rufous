@@ -81,12 +81,15 @@ data GenSt =
 makeLenses ''GenSt
 
 -- | An empty node bucket has empty infant/persistent sets
+emptyNodeBucket :: NodeBucket
 emptyNodeBucket = NodeBucket MSt.empty MSt.empty
 
+-- | Create an empty gen state
+-- TODO: better seed...
 emptyGenSt :: O.RufousOptions -> S.Signature -> P.Profile -> String -> GenSt
-emptyGenSt o s p name = GenSt o s p Sq.empty d St.empty emptyNodeBucket emptyNodeBucket nc (mkStdGen 0) dbg  -- TODO: seed it better... 
+emptyGenSt o s p name = GenSt o s p Sq.empty d St.empty emptyNodeBucket emptyNodeBucket nc (mkStdGen 0) debug
    where d = D.emptyDUG name
-         dbg = Dbg 0 0 0 0 0 M.empty 0
+         debug = Dbg 0 0 0 0 0 M.empty 0
          nc = M.empty
 
 -- | The algorithm used here is stateful, and so we perform
@@ -104,7 +107,7 @@ debugIf b m f =
 
 updateDbg :: Lens' DebugInfo a -> (a -> a) -> GenState ()
 updateDbg m f = do
-   opt <- use opt
-   if O.debug opt then
+   opts <- use opt
+   if O.debug opts then
       dbg . m %= f
    else return ()

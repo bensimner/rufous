@@ -15,9 +15,13 @@ data WrappedADT t x =
       }
   deriving (Show)
 
-
+extract :: IO a -> IO (a, ExtractedDUG)
 extract = undefined
+
+_log_operation :: String -> [ExtractArg t x] -> t x -> WrappedADT t x
 _log_operation opName args x = WrappedADT 0 args opName (Right x)
+
+_log_observer :: String -> [ExtractArg t x] -> x -> x
 _log_observer _ _ x = x
 
 getVersion :: WrappedADT t x -> t x

@@ -31,13 +31,13 @@ library
 
   build-depends:       base
                        , rufous
-  hs-src-dirs:         lib
+  hs-source-dirs:      lib
   default-language:    Haskell2010
   ghc-options:         -Wall
 
 executable rufous-tests
   main-is:             Queue.hs
   build-depends:       rufous-tests
-  hs-src-dirs:         exe
+  hs-source-dirs:      exe
   default-language:    Haskell2010
   ghc-options:         -Wall

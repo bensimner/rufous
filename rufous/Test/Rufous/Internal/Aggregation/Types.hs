@@ -42,5 +42,8 @@ data AggregatedResult =
       }
 makeLenses ''AggregatedResult  -- the other types are not lensy so that the API is clean
 
+kmeansArgs :: KMeansOptions
 kmeansArgs = KMeansOptions 5
+
+aggregationArgs :: AggregationOptions
 aggregationArgs = AggregationOptions kmeansArgs

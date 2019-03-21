@@ -1,8 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 module Test.Rufous.Internal.Generate.Core where
 
-import Control.Applicative
-import Control.Monad
 import Control.Lens
 
 import Data.Dynamic
@@ -32,11 +30,11 @@ build size = do
    debugIf b flatDeflateSteps (+1)
    d <- use dug
    buf <- use buffer
-   living <- use living
+   alive <- use living
    stat <- use dbg
    () <- return $ seq d $ unsafePerformIO $ do
       if size `mod` 100 == 0 then do
-         putStrLn $ "Step " ++ show (size, D.size d, length buf, St.size living, stat)
+         putStrLn $ "Step " ++ show (size, D.size d, length buf, St.size alive, stat)
       else return ()
    build (size - 1)
 
@@ -52,15 +50,13 @@ inflate = genBufferedOp >>= pushBuffer
 genBufferedOp :: GenState BufferedOperation
 genBufferedOp = do
    st <- get
-   op <- R.genAccordingTo (st^.profile^.P.operationWeights) (st ^. sig ^. S.operations)
-   let opName = op^.S.opName
-   let Just op = st ^. sig . S.operations . at opName
-   args <- sequence $ genAbstractArgs op
-   updateDbg inflatedOps (M.insertWith (+) opName 1)
-   return $ BufferedOperation op args 100 -- TODO: load from options
+   o <- R.genAccordingTo (st^.profile^.P.operationWeights) (st ^. sig ^. S.operations)
+   args <- sequence $ genAbstractArgs o
+   updateDbg inflatedOps (M.insertWith (+) (o^.S.opName) 1)
+   return $ BufferedOperation o args 100 -- TODO: load from options
 
 genAbstractArgs :: S.Operation -> [GenState BufferedArg]
-genAbstractArgs op = genAbstractFromArgTy (op^.S.opName) <$> op^.S.opArgTypes
+genAbstractArgs o = genAbstractFromArgTy (o^.S.opName) <$> o^.S.opArgTypes
 
 genAbstractFromArgTy :: String -> S.ArgType -> GenState BufferedArg
 genAbstractFromArgTy opName ty = do
@@ -74,7 +70,7 @@ tryDeflate = do
    bops <- popBufferAll
    bs <- sequence $ map tryDeflateBop bops
    if or bs then do -- if we successfully created any new versions
-      tryDeflate    -- then loop to see if we can satisfy any more
+      _ <- tryDeflate    -- then loop to see if we can satisfy any more
       return True
    else
       return False
@@ -82,6 +78,7 @@ tryDeflate = do
 -- | Try to "deflate"  (i.e. fill and/or commit) a buffered operation.
 -- if success then add new node directly to DUG, and return True
 -- otherwise it places it back on the buffer and returns False.
+tryDeflateBop :: BufferedOperation -> GenState Bool
 tryDeflateBop bop | satisifed bop          = commitBop bop
 tryDeflateBop bop | partiallySatisifed bop = tryFillNVAs bop       >> return False
 tryDeflateBop bop                          = trySatisfyAndPush bop >> return False
@@ -100,7 +97,7 @@ commitBop bop = do
             R.RunExcept R.NotImplemented -> cont
             R.RunTypeMismatch -> error "Shadow type mismatch"
             R.RunExcept R.GuardFailed -> do
-               sequence $ do
+               _ <- sequence $ do
                   Concrete (S.Version v) _ <- bop^.bufArgs
                   return $ do
                      nc <- use nodeCounts
@@ -141,12 +138,12 @@ kill n = do
 -- | Check all BufferedArg's point to a living node
 checkDargs :: BufferedOperation -> GenState Bool
 checkDargs bop =  do
-   living <- use living
-   let checks = map (checkDarg living) (bop^.bufArgs)
+   alive <- use living
+   let checks = map (checkDarg alive) (bop^.bufArgs)
    return $ and checks
 
 checkDarg :: St.Set Int -> BufferedArg -> Bool
-checkDarg living (Concrete (S.Version v) _) = v `St.member` living
+checkDarg alive  (Concrete (S.Version v) _) = v `St.member` alive
 checkDarg _      (Concrete (S.NonVersion _) _) = True
 checkDarg _      (Abstract _ _) = error "checkDarg :: unexpected abstract arg"
 
@@ -162,7 +159,7 @@ commitDargs bop = do
 
 -- | Given a BufferedArg, commit it
 commitDarg :: Lens' GenSt NodeBucket -> BufferedArg -> GenState ()
-commitDarg m (Abstract _ _) = error "commitDarg :: unexpected abstract arg"
+commitDarg _ (Abstract _ _) = error "commitDarg :: unexpected abstract arg"
 commitDarg m (Concrete d pty) =
    case pty of
       Nothing -> return ()
@@ -170,18 +167,18 @@ commitDarg m (Concrete d pty) =
       Just Ephemeral -> commitEphemeral m d
 
 commitPersistent :: Lens' GenSt NodeBucket -> D.DUGArg -> GenState ()
-commitPersistent m (S.NonVersion _) = error "commitPersistent :: unexpected Non-Version argument"
+commitPersistent _ (S.NonVersion _) = error "commitPersistent :: unexpected Non-Version argument"
 commitPersistent m (S.Version v) = do
    infs <- getBag m infants
-   pers <- getBag m persistents
+--   pers <- getBag m persistents
    if v `St.member` infs then do
       m . infants %= MSt.delete v
       m . persistents %= MSt.insert v
    else return ()
 
 commitEphemeral :: Lens' GenSt NodeBucket -> D.DUGArg -> GenState ()
-commitEphemeral m (S.NonVersion _) = error "commitEphemeral :: unexpected Non-Version argument"
-commitEphemeral m (S.Version v) = kill v
+commitEphemeral _ (S.NonVersion _) = error "commitEphemeral :: unexpected Non-Version argument"
+commitEphemeral _ (S.Version v) = kill v
 
 abstractify :: BufferedOperation -> GenState BufferedOperation
 abstractify bop = do
@@ -194,15 +191,15 @@ dugArgs bop = [a | Concrete a _ <- bop^.bufArgs]
 makeShadow :: BufferedOperation -> GenState (Maybe Dynamic)
 makeShadow bop = do
    d <- use dug
-   sig <- use sig
-   let Just shadow = sig ^. S.shadowImpl
+   s <- use sig
+   let Just shadow = s^.S.shadowImpl
    return $ Just $ R.makeDynCell shadow d (bop^.bufOp) (dugArgs bop)
 
 runShadow :: BufferedOperation -> GenState (R.RunResult)
 runShadow bop = do
-   sig <- use sig
+   s <- use sig
    let name = bop^.bufOp^.S.opName
-   let Just shadowImpl = sig ^. S.shadowImpl
+   let Just shadowImpl = s^.S.shadowImpl
    let Just (_, implt) = shadowImpl^.S.implOperations^.at name
    Just shadowDyn <- makeShadow bop
    return $ unsafePerformIO $ R.runDynCell shadowImpl implt shadowDyn
@@ -237,31 +234,27 @@ trySatisfyArg _          (arg@(Concrete _ _)) = return arg
 trySatisfyArg _          (arg@(Abstract (S.NonVersion _) _)) = return arg
 trySatisfyArg S.Mutator  (aty@(Abstract (S.Version ()) p)) = satisfyVersionArg aty p mutators
 trySatisfyArg S.Observer (aty@(Abstract (S.Version ()) p)) = satisfyVersionArg aty p observers
+trySatisfyArg S.Generator (Abstract (S.Version _) _) = error "trySatisfy version arg to generator :: impossible by defn"
 
 -- | Try satisfy a non-version argument
+trySatisfyNVArg :: BufferedArg -> GenState BufferedArg
 trySatisfyNVArg (arg@(Concrete _ _)) = return arg
-trySatisfyNVArg (arg@(Abstract (S.NonVersion nva) _)) = satisfyNVA nva
+trySatisfyNVArg (Abstract (S.NonVersion nva) _) = satisfyNVA nva
 trySatisfyNVArg _ = error "trySatisfyNVArg :: passed a non- non-version-arg"
 
 -- TODO: This. Is. Terrible.
-nva n = Concrete (S.NonVersion n) Nothing
+wrapNva :: S.NVA Int Int Bool -> BufferedArg
+wrapNva n = Concrete (S.NonVersion n) Nothing
 satisfyNVA :: S.NVA () () () -> GenState BufferedArg
 satisfyNVA (S.IntArg _) = do
    i <- R.genRandomR (-10, 10)
-   return $ nva (S.IntArg i)
+   return $ wrapNva (S.IntArg i)
 satisfyNVA (S.BoolArg _) = do
    i <- R.genRandomR (True, False)
-   return $ nva (S.BoolArg i)
+   return $ wrapNva (S.BoolArg i)
 satisfyNVA (S.VersionParam _) = do  -- Monomorphise to Int
    i <- R.genRandomR (-10, 10)
-   return $ nva (S.VersionParam i)
-
-infixr 6 <||>
-m1 <||> m2 = do
-   v <- m1
-   case v of
-      Nothing -> m2
-      Just _ -> return v
+   return $ wrapNva (S.VersionParam i)
 
 satisfyVersionArg :: BufferedArg -> PersistenceType -> Lens' GenSt NodeBucket -> GenState BufferedArg
 satisfyVersionArg aty Persistent bag = do
@@ -284,8 +277,8 @@ satisfyVersionArg aty Ephemeral bag = do
 getBag :: Lens' GenSt NodeBucket -> Lens' NodeBucket (MSt.MSet Int) -> GenState (St.Set Int)
 getBag m k = do
    bg <- use (m . k)
-   living <- use living
-   return $ living `St.intersection` (MSt.toSet bg)
+   alive <- use living
+   return $ alive `St.intersection` (MSt.toSet bg)
 
 -- | Non-destructively pick an argument from the infants bag
 pickFromInfants :: Lens' GenSt NodeBucket -> GenState (Maybe Int)

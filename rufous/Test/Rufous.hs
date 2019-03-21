@@ -41,20 +41,16 @@ where
 import Control.Exception
 import Control.Lens
 
-import qualified Data.Map as M
+import Test.Rufous.Options (args)
+import qualified Test.Rufous.Options as Opt
 
-import Test.Rufous.Options as Opt
-
-import Test.Rufous.DUG as D hiding (args)
-import Test.Rufous.Signature as S
-import Test.Rufous.Profile as P
-
--- import Test.Rufous.Extract as E
-import Test.Rufous.Generate as G
-import Test.Rufous.Run as R
-import Test.Rufous.Select as Se
-
-import Test.Rufous.TH as TH
+import qualified Test.Rufous.DUG as D
+import qualified Test.Rufous.Signature as S
+import qualified Test.Rufous.Profile as P
+import qualified Test.Rufous.Generate as G
+import qualified Test.Rufous.Run as R
+import qualified Test.Rufous.Select as Se
+import qualified Test.Rufous.TH as TH
 --import Test.Rufous.Exceptions as Ex
 
 
@@ -75,8 +71,8 @@ newtype ShadowList t = S Int
 instance ListADT ShadowList where
    listcons _ (S i) = S (i + 1)
    listempty = S 0
-   listhead (S 0) = throw GuardFailed
-   listhead (S i) = throw NotImplemented
+   listhead (S 0) = throw R.GuardFailed
+   listhead (S _) = throw R.NotImplemented
 
 data FakeList a = EF | F a (FakeList a)
 instance ListADT FakeList where
@@ -89,13 +85,13 @@ TH.makeADTSignature ''ListADT
 
 
 -- | Aggregate a bunch of results into something more manageable to output
-rufousAggregate :: RufousOptions -> [R.Result] -> IO [Agg.AggregatedResult]
+rufousAggregate :: Opt.RufousOptions -> [R.Result] -> IO [Agg.AggregatedResult]
 rufousAggregate opts rs =
-   case aggregator opts of
-      Opt.KMeans -> Agg.aggregateKMeans (Opt.kmeansOptions (aggregationOptions opts)) rs
+   case Opt.aggregator opts of
+      Opt.KMeans -> Agg.aggregateKMeans (Opt.kmeansOptions (Opt.aggregationOptions opts)) rs
 
 -- | runs Rufous on a set of DUGs to get timing info for each of them
-runRufousOnDugs :: RufousOptions -> S.Signature -> [D.DUG] -> IO ()
+runRufousOnDugs :: Opt.RufousOptions -> S.Signature -> [D.DUG] -> IO ()
 runRufousOnDugs opts s dugs = do
    let nul = s ^. S.nullImpl
    let impls = s ^. S.implementations
@@ -104,38 +100,43 @@ runRufousOnDugs opts s dugs = do
    Se.select s agg
 
 -- | runs Rufous on a set of Profile by generating DUGs
-runRufousOnProfiles :: RufousOptions -> S.Signature -> [P.Profile] -> IO ()
-runRufousOnProfiles args s profiles = do
-   dugs <- mapM (\p -> G.generateDUG args s p (averageDugSize args)) profiles
+runRufousOnProfiles :: Opt.RufousOptions -> S.Signature -> [P.Profile] -> IO ()
+runRufousOnProfiles opts s profiles = do
+   dugs <- mapM (\p -> G.generateDUG opts s p (Opt.averageDugSize opts)) profiles
 
-   if debug args
+   if Opt.debug opts
       then do
          mapM_ (print . D.extractProfile s) dugs
-         mapM_ (\d -> D.printDUG ("output/" ++ d^.name) d) dugs
+         mapM_ (\d -> D.printDUG ("output/" ++ d^.D.name) d) dugs
       else return ()
 
-   case args of
-      RufousOptions _ _ [] _ _ _ _ _ _ -> runRufousOnDugs args s dugs
-      RufousOptions _ _ ds _ _ _ _ _ _ -> runRufousOnDugs args s ds
+   case opts of
+      Opt.RufousOptions _ _ [] _ _ _ _ _ _ -> runRufousOnDugs opts s dugs
+      Opt.RufousOptions _ _ ds _ _ _ _ _ _ -> runRufousOnDugs opts s ds
 
 -- | Entrypoint to Rufous
 --   With the default arguments this will run Rufous for some ADT,
 --   generating Profiles and DUGs and print a table of results
 --   with a generalised performance.
-mainWith :: RufousOptions -> IO ()
-mainWith args = do
-   let s = signature args
+mainWith :: Opt.RufousOptions -> IO ()
+mainWith opts = do
+   let s = Opt.signature opts
    print $ s ^. S.implementations
-   profiles <-
-      if null (profiles args)
-         then sequence (replicate (numberOfTests args) (S.randomProfile s))
-         else return (profiles args)
+   ps <-
+      if null (Opt.profiles opts)
+         then sequence (replicate (Opt.numberOfTests opts) (S.randomProfile s))
+         else return (Opt.profiles opts)
 
-   if debug args
-      then mapM_ print profiles
+   if Opt.debug opts
+      then mapM_ print ps
       else return ()
 
-   runRufousOnProfiles args s profiles
+   runRufousOnProfiles opts s ps
 
+main :: IO ()
 main = do
-   mainWith args{signature=_ListADT, debug=True, averageDugSize=500}
+   mainWith args{Opt.signature=_ListADT, Opt.debug=True, Opt.averageDugSize=500}
+
+main' :: IO ()
+main' = do
+   mainWith args{Opt.signature=_ListADT, Opt.debug=True, Opt.averageDugSize=50, Opt.numberOfTests=50}

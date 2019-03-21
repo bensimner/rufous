@@ -7,7 +7,6 @@ import Control.Exception
 import Data.Dynamic
 
 import Data.Time.Clock
-import Data.Maybe
 
 import qualified Data.Map as M
 
@@ -43,11 +42,11 @@ runOn d impl = do
             let Just (_, ity) = impl ^. S.implOperations . at (n^.D.operation^.S.opName)
             res <- runDynCell impl ity (n^.D.shadow)
             t1 <- getCurrentTime
-            let d = diffUTCTime t1 t0
+            let dtime = diffUTCTime t1 t0
             case res of
-               RunSuccess _ -> return (Just res, d)
+               RunSuccess _ -> return (Just res, dtime)
                RunTypeMismatch -> error "Type mismatch!"
-               RunExcept NotImplemented -> return (Nothing, d)  -- Expect to see NotImplemented for things like Null implementations
+               RunExcept NotImplemented -> return (Nothing, dtime)  -- Expect to see NotImplemented for things like Null implementations
                RunExcept e -> error $ show ("Ev.run got error", e)
 
 buildImplDUG :: S.Implementation -> D.DUG -> D.DUG
@@ -59,13 +58,13 @@ updateNode impl d n = n{D._shadow=dyn}
    where dyn = makeDynCell impl d (n^.D.operation) (n^.D.args)
 
 makeDynCell :: S.Implementation -> D.DUG -> S.Operation -> [D.DUGArg] -> Dynamic
-makeDynCell impl d op args = dynResult f as
+makeDynCell impl d o args = dynResult f dynArgs
    where f :: Dynamic
-         Just (f, retTy) = impl ^. S.implOperations ^. at (op^.S.opName)
-         dynResult f [] = f
-         dynResult f (a:as) = dynResult (f `dynApp` a) as
-         as :: [Dynamic]
-         as = do
+         Just (f, _) = impl ^. S.implOperations ^. at (o^.S.opName)
+         dynResult r [] = r
+         dynResult r (a:as) = dynResult (r `dynApp` a) as
+         dynArgs :: [Dynamic]
+         dynArgs = do
             arg <- args
             case arg of
                S.Version i -> do 
@@ -77,9 +76,9 @@ makeDynCell impl d op args = dynResult f as
 
 
 runDynCell :: S.Implementation -> S.ImplType -> Dynamic -> IO RunResult
-runDynCell impl (S.ImplType t) d = run t fromDynamic
-   where run :: Typeable a => a -> (Dynamic -> Maybe a) -> IO RunResult
-         run _ f = do
+runDynCell _ (S.ImplType t) d = runDyn t fromDynamic
+   where runDyn :: Typeable a => a -> (Dynamic -> Maybe a) -> IO RunResult
+         runDyn _ f = do
             case f d of
                Nothing -> return $ RunTypeMismatch
                Just r  -> catch (g (RunSuccess r)) handleE

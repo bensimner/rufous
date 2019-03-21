@@ -41,7 +41,7 @@ data RufousOptions =
       , aggregator :: AggregatorType
       }
 
-data DebugOptions = 
+data DebugOptions =
    DebugOptions {
         dumpDir :: String
       , dumpDugs :: Bool
@@ -56,6 +56,7 @@ debugFlag :: (DebugOptions -> Bool) -> RufousOptions -> Bool
 debugFlag f r = debugOpt f False r
 
 {- Default Options -}
+debugArgs :: DebugOptions
 debugArgs =
    DebugOptions
       { dumpDugs=False
@@ -64,6 +65,7 @@ debugArgs =
       , showNullTimes=True
       }
 
+args :: RufousOptions
 args =
    RufousOptions
       { signature=error "args :: no signature specified"

@@ -12,7 +12,6 @@ author:              Ben Simner
 maintainer:          Ben Simner <benjsimner@gmail.com>
 category:            Testing
 build-type:          Simple
-extra-source-files:  ChangeLog.md
 cabal-version:       >=1.10
 
 source-repository head

@@ -1,6 +1,6 @@
 module Test.Rufous.Internal.DUG.DotPrinter where
 
-import Control.Lens
+import Control.Lens ((^.))
 
 import Data.List (intercalate)
 import System.Process
@@ -25,7 +25,7 @@ printDUG fName d = do
    write . unlines $ [show (n ^. nodeId) ++ "[label=\"" ++ nodeLabel n ++ "\"]"  | n <- nodes d]
    write . unlines $ [show from ++ "->" ++ show to  | (to, from) <- edges d]
    write "}"
-   createProcess (proc "neato" [dotName, "-Tpdf", "-o", pngName])
+   _ <- createProcess (proc "neato" [dotName, "-Tpdf", "-o", pngName])
    return ()
    where write s = appendFile dotName (s ++ "\n")
          dotName = fName ++ ".dot"

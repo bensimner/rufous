@@ -1,8 +1,6 @@
 module Test.Rufous.Internal.DUG.ProfileExtractor where
 
 import Control.Lens
-import qualified Data.Maybe as My
-
 import qualified Data.Map as M
 
 import qualified Test.Rufous.Profile as P
@@ -54,6 +52,7 @@ kinded d node opName =
 
 -- Sometimes NaN appears for DUGs with no operations of one weight or no persistent
 -- applications, and these must be rounded to 0.
+guardedDiv :: RealFloat a => a -> a -> a
 guardedDiv a b =
    if isNaN (a/b) then
       0

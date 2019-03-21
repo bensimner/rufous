@@ -18,7 +18,8 @@ import Control.Exception
 
 -- Classifying a list of args into a type is straightforward:
 
-isVersion (Version v) = True
+isVersion :: ArgType -> Bool
+isVersion (Version _) = True
 isVersion _ = False
 
 classifyArgs :: [ArgType] -> OperationCategory
@@ -36,7 +37,7 @@ makeADTSignature :: Name -> DecsQ
 makeADTSignature name = do
    info <- reify name
    case info of
-      ClassI (ClassD ctx name tys funds sigds) insts -> do
+      ClassI (ClassD _ _ _ _ sigds) insts -> do
          let tyPairs = pairsFromSigds sigds
          let opPairs = pairsToQ tyPairs
          let ops = [| M.fromList $opPairs |]
@@ -50,20 +51,22 @@ makeADTSignature name = do
          extractorImpls <- mkExtractorImpls name tyPairs implBuilders
 
          -- Build the Null-implementation
-         let (nullImpl, qnullDecl) = mkNullImpl name tyPairs
+         let (nullInstanceBuilder, qnullDecl) = mkNullImpl name tyPairs
          nullDecl <- qnullDecl
          let shadow = case maybeShadow of
                Nothing      -> [| Nothing |]
                Just builder -> [| Just $(buildImpl builder) |]
 
+{-
          shadowTy <- case maybeShadow of
                Nothing      -> VarT <$> newName "a"
                Just (ty, _) -> return $ AppT ty (TupleT 0)
+-}
 
          -- Finally build the Test.Rufous.Signature.Signature declaration
-         nullExtractDecl <- mkExtractorImpl name tyPairs nullImpl
+         nullExtractDecl <- mkExtractorImpl name tyPairs nullInstanceBuilder
          let nullExtract = mkImplBuilder tyPairs nullExtractDecl
-         let sig = [| Signature $ops $impls $(buildImpl nullImpl) $(buildImpl nullExtract) $shadow  |]
+         let sig = [| Signature $ops $impls $(buildImpl nullInstanceBuilder) $(buildImpl nullExtract) $shadow  |]
          let specName = mkName $ "_" ++ (nameBase name)
          let specPat = return $ VarP specName
          ds <- [d| $specPat = $sig |]
@@ -87,6 +90,7 @@ type Pairs = [Pair]
 pairsFromSigds :: [Dec] -> Pairs
 pairsFromSigds [] = []
 pairsFromSigds ((SigD name ty) : decls) = pairFromSigd name ty : pairsFromSigds decls
+pairsFromSigds _ = error "pairsFromSigds :: unsupported declaration"
 
 pairFromSigd :: Name -> Type -> (String, [ArgType])
 pairFromSigd name ty = (nameBase name, argsFromType ty)
@@ -94,20 +98,20 @@ pairFromSigd name ty = (nameBase name, argsFromType ty)
 argsFromType :: Type -> [ArgType]
 argsFromType ty =
    case ty of
-      ForallT _ _ ty -> argsFromType ty  -- unwrap the forall on the class constraint
+      ForallT _ _ ty' -> argsFromType ty'  -- unwrap the forall on the class constraint
       AppT (AppT ArrowT lhs) rhs -> argFromType lhs : argsFromType rhs
       x                          -> [argFromType x]
 
 argFromType :: Type -> ArgType
 argFromType ty =
    case ty of
-      AppT (VarT ctorName) (VarT varName) -> Version ()
-      ConT name -> 
+      AppT (VarT _) (VarT _) -> Version ()
+      ConT name ->
          case showName name of
             "GHC.Types.Int" -> NonVersion (IntArg ())
             "GHC.Types.Bool" -> NonVersion (BoolArg ())
             nm -> error $ "argFromType :: Unexpected type constructor " ++ nm
-      VarT name -> NonVersion (VersionParam ())
+      VarT _ -> NonVersion (VersionParam ())
       x -> error $ "argFromType :: Unexpected value " ++ show x
 
 expsToExp :: [Q Exp] -> Q Exp
@@ -162,17 +166,17 @@ mkNullImplFromPair (name, args) = do
       return  $ [FunD name' [Clause patterns (NormalB $ impl) []]]
 
 mkPats :: [ArgType] -> [(Pat, Arg Name Name Name Name)]
-mkPats ats = go ats 0
+mkPats ats = go ats (0 :: Int)
    where
       go [] _ = []
       go (arg:args) k = 
          let name' = mkName $ name k 
          in (VarP name', mkArg arg name') : go args (k + 1)
       name k = "x" ++ show k
-      mkArg (Version _) name = Version name
-      mkArg (NonVersion (VersionParam _)) name = NonVersion (VersionParam name)
-      mkArg (NonVersion (IntArg _)) name = NonVersion (IntArg name)
-      mkArg (NonVersion (BoolArg _)) name = NonVersion (BoolArg name)
+      mkArg (Version _) ident = Version ident
+      mkArg (NonVersion (VersionParam _)) ident = NonVersion (VersionParam ident)
+      mkArg (NonVersion (IntArg _)) ident = NonVersion (IntArg ident)
+      mkArg (NonVersion (BoolArg _)) ident = NonVersion (BoolArg ident)
 
 mkExtractorImpls :: Name -> Pairs -> [InstanceBuilder] -> Q [Dec]
 mkExtractorImpls className pairs impls = sequence . map (mkExtractorImpl className pairs) $ impls
@@ -217,7 +221,6 @@ buildCall n xs = go xs [| $(return $ VarE n) |]
       mkArg (NonVersion (VersionParam v)) = [| $(return $ VarE $ v) |]
       mkArg (NonVersion (IntArg v)) = [| $(return $ VarE $ v) |]
       mkArg (NonVersion (BoolArg v)) = [| $(return $ VarE $ v) |]
-      mkArg (NonVersion v) = error $ "buildCall :: got unexpected mkArg arg"
 
 
 patsToVersions :: [(Pat, Arg Name Name Name Name)] -> [Q Exp]
@@ -225,27 +228,28 @@ patsToVersions xs = do
    (VarP n, a) <- xs
    let ne = return $ VarE n
    case a of
-      Version n    -> return [| Version $ne |]
-      NonVersion (VersionParam n) -> return [| NonVersion (VersionParam $ne) |]
-      NonVersion (IntArg n) -> return [| NonVersion (IntArg $ne) |]
-      NonVersion (BoolArg n) -> return [| NonVersion (BoolArg $ne) |]
+      Version _    -> return [| Version $ne |]
+      NonVersion (VersionParam _) -> return [| NonVersion (VersionParam $ne) |]
+      NonVersion (IntArg _) -> return [| NonVersion (IntArg $ne) |]
+      NonVersion (BoolArg _) -> return [| NonVersion (BoolArg $ne) |]
 
 isShadowImpl :: InstanceBuilder -> Bool
 isShadowImpl (ty, _) = 
    case ty of
       ConT name -> "Shadow" `isPrefixOf` nameBase name
-      x         -> False
+      _         -> False
 
 mkImplBuilders :: Pairs -> [InstanceDec] -> [InstanceBuilder]
-mkImplBuilders pairs [] = []
+mkImplBuilders _ [] = []
 mkImplBuilders pairs (inst:insts) = mkImplBuilder pairs inst : mkImplBuilders pairs insts
 
 mkImplBuilder :: Pairs -> InstanceDec -> InstanceBuilder
 mkImplBuilder pairs (InstanceD Nothing _ (AppT _ ty) _) =
    (ty, mkImplBuilderVars ty pairs)
+mkImplBuilder _ _ = error "mkImplBuilder :: unsupported instance declaration"
 
 mkImplBuilderVars :: Type -> Pairs -> [(String, Type, Type)]
-mkImplBuilderVars ty [] = [] 
+mkImplBuilderVars _ [] = []
 mkImplBuilderVars ty (p:ps) = mkImplBuilderVar ty p : mkImplBuilderVars ty ps
 
 mkImplBuilderVar :: Type -> Pair -> (String, Type, Type)
@@ -278,10 +282,11 @@ buildImplPair (name, ty, retTy) = [| ($nameStr, ($var, $rt)) |]
 argTysToType :: Type -> [ArgType] -> Type
 argTysToType ty [retTy]   = aTypeToType ty retTy
 argTysToType ty (aty:tys) = AppT (AppT ArrowT (aTypeToType ty aty)) (argTysToType ty tys)
+argTysToType _ [] = error "argTysToType :: empty type signature"
 
 aTypeToType :: Type -> ArgType -> Type
 aTypeToType ty (Version ()) = AppT ty (ConT (mkName "Int"))
-aTypeToType ty (NonVersion x) = ConT (mkName "Int")
+aTypeToType _ (NonVersion _) = ConT (mkName "Int")
 
 userfriendlyTypeString :: Type -> String
 userfriendlyTypeString (ConT name) = showName name

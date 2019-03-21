@@ -21,7 +21,7 @@ makeLenses ''Profile
 instance Show Profile where
    show (Profile ws ps m) = "{weights={" ++ toStr ws ++ "}, pers={" ++ toStr ps ++ "}, mortality=" ++ (show m) ++ "}"
      where
-         toStr m = intercalate ", " (map (\(k, a) -> k ++ ": " ++ show a) (M.toList m))
+         toStr d = intercalate ", " (map (\(k, a) -> k ++ ": " ++ show a) (M.toList d))
 
 -- | Generate a simple 'Profile' from a list of operations
 -- With a default mortality and persistent weights
