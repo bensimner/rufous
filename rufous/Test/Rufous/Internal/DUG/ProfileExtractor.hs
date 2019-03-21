@@ -40,12 +40,17 @@ normMap m = M.map (`guardedDiv` tot) m
    where tot = sum (M.elems m)
 
 persistents :: DUG -> M.Map String Float
-persistents d = M.map (\v -> (fromIntegral v) `guardedDiv` (fromIntegral total)) counts
-   where counts = foldl (\m n -> M.insertWith (\_ v -> v+1) (n^.operation^.S.opName) 0 m) M.empty (nodes d)
-         total = length (nodes d)
-         appkinds = M.map (map (My.fromJust . kind)) (edgesFromDUG d)
-         kind :: Int -> Maybe S.OperationCategory
-         kind j = d^.operations^.at j ^? _Just . operation . S.opCategory
+persistents d = M.fromList [(o, persistent o) | o <- opNames]
+   where opNames = [n^.operation^.S.opName | n <- nodes d]
+         allNodes = [kinded d n | n <- nodes d]
+         allNodesOp o = allNodes <*> [o]
+         persistent o = sum [max (x - 1) 0 | x <- allNodesOp o] `guardedDiv` (sum (allNodesOp o))
+
+-- | for each note, return a map which says
+-- how many of a particular operation were performed on it.
+kinded :: Num a => DUG -> Node -> String -> a
+kinded d node opName =
+   sum [1 | n' <- edgesFrom d node, (nodeAt d n')^.operation^.S.opName == opName]
 
 -- Sometimes NaN appears for DUGs with no operations of one weight or no persistent
 -- applications, and these must be rounded to 0.
