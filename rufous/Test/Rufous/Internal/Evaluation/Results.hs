@@ -33,6 +33,7 @@ mergeProfiles p1 p2 =
       { P._operationWeights=mergeFMaps (p1^.P.operationWeights) (p2^.P.operationWeights)
       , P._persistentApplicationWeights=mergeFMaps (p1^.P.persistentApplicationWeights) (p2^.P.persistentApplicationWeights)
       , P._mortality=mergeFractionals (p1^.P.mortality) (p2^.P.mortality)
+      , P._size=mergeInts (p1^.P.size) (p2^.P.size)
       }
 
 mergeMaps :: Ord k => M.Map k Int -> M.Map k Int -> M.Map k Int

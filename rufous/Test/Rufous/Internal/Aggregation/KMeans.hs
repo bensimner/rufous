@@ -67,11 +67,12 @@ orderedPairs :: M.Map String a -> [(String, a)]
 orderedPairs m = sortOn fst (M.toList m)
 
 vec :: R.Result -> [Float]
-vec r = ws ++ ps ++ [m]
+vec r = ws ++ ps ++ [m] ++ [s]
    where ws = orderedElems $ p ^. P.operationWeights
          ps = orderedElems $ p ^. P.persistentApplicationWeights
          m = p ^. P.mortality
          p = r ^. R.resultProfile
+         s = fromIntegral $ p ^. P.size
 
 centre :: [[Float]] -> [Float]
 centre vecs = map (/ n) $ map sum (transpose vecs)

@@ -8,8 +8,6 @@ import Control.Monad.State
 
 import Data.Foldable (toList)
 
-import qualified Data.Sequence as Sq
-
 import qualified Test.Rufous.Options as Opt
 import qualified Test.Rufous.Signature as S
 import qualified Test.Rufous.Profile as P
@@ -19,9 +17,10 @@ import Test.Rufous.Internal.Generate.Types
 import Test.Rufous.Internal.Generate.Core
 
 -- | Generates a 'DUG' which conforms to a given Profile.
-generateDUG :: Opt.RufousOptions -> S.Signature -> P.Profile -> Int -> IO D.DUG
-generateDUG o s p size = do
+generateDUG :: Opt.RufousOptions -> S.Signature -> P.Profile -> IO D.DUG
+generateDUG o s p = do
       name <- freshName
+      let size = p^.P.size
       let (a, s') = runState (build size) (emptyGenSt o s p name)
       if Opt.debug o then
          mapM_ putStrLn (toList (s'^.dbg^.dbgTrace))

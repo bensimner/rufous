@@ -14,16 +14,19 @@ extractProfile s d = p
    where ws = weights d
          ps = persistents d
          m = mortality d
+         sz = length (nodes d)
          p = blankProfile s
                & P.operationWeights %~ M.unionWith (+) ws
                & P.persistentApplicationWeights %~ M.unionWith (+) ps
                & P.mortality .~ m
+               & P.size .~ sz
 
 
 blankProfile :: S.Signature -> P.Profile
-blankProfile s = P.Profile ps ps m
+blankProfile s = P.Profile ps ps m sz
    where ps = M.fromList [(k, 0) | k <- M.keys (s ^. S.operations)]
          m = 0
+         sz = 0
 
 mortality :: DUG -> Float
 mortality d = living `guardedDiv` total

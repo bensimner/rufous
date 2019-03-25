@@ -25,13 +25,14 @@ pof s p = sum pofs / (fromIntegral (length pofs))
         pofs = [pPersistent p k | k <- observers]
 
 -- | Generate a random Profile for a given Signature
-randomProfile :: Signature -> IO Profile
-randomProfile s = do
+randomProfile :: [Int] -> Signature -> IO Profile
+randomProfile avgSizes s = do
       m <- randomMortality
       let ops = (M.elems (s^.operations))
       ps <- randomPersistents ops
       ws <- randomWeights ops
-      return $ Profile ws ps m
+      s <- randomSize avgSizes
+      return $ Profile ws ps m s
 
 randomOps :: [Operation] -> IO Float -> IO (M.Map String Float)
 randomOps ops m = do
@@ -44,6 +45,12 @@ randomOps ops m = do
 -- TODO: research+justify
 randomMortality :: IO Float
 randomMortality = randomListIO [0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.6, 0.8]
+
+-- TODO: research+justify
+randomSize :: [Int] -> IO Int
+randomSize avgSizes = randomListIO sizes
+   where sizes = [truncate (step sz i) | i <- [0.5, 0.6 .. 1.5], sz <- avgSizes]
+         step sz i = (fromIntegral sz) * (i^2)
 
 -- TODO: research+justify
 randomPersistent :: IO Float

@@ -10,28 +10,29 @@ import Data.List (intercalate)
 --  - The weights of proportion for each of the applications of the operations (the 'operationWeights')
 --  - The weights of persistent applications of those operations (the 'persistentApplicationWeights')
 --  - The weights of dead/mutated notes (the 'mortality', aka the relative depth of the 'DUG')
+--  - The total number of versions of that datastructure that was created (aka the 'size' of the DUG)
 data Profile =
   Profile
       { _operationWeights :: M.Map String Float
       , _persistentApplicationWeights :: M.Map String Float
       , _mortality :: Float
+      , _size :: Int
       }
 makeLenses ''Profile
 
 instance Show Profile where
-   show (Profile ws ps m) = "{weights={" ++ toStr ws ++ "}, pers={" ++ toStr ps ++ "}, mortality=" ++ (show m) ++ "}"
+   show (Profile ws ps m s) = 
+      ("{weights={" 
+       ++ toStr ws
+       ++ "}, pers={"
+       ++ toStr ps 
+       ++ "}, mortality="
+       ++ (show m)
+       ++ ", size="
+       ++ (show s)
+       ++ "}")
      where
          toStr d = intercalate ", " (map (\(k, a) -> k ++ ": " ++ show a) (M.toList d))
-
--- | Generate a simple 'Profile' from a list of operations
--- With a default mortality and persistent weights
-fromList :: [String] -> Profile
-fromList ops = Profile ws ps m
-   where
-      n = fromIntegral $ length ops
-      ws = M.fromList $ map (\x -> (x, 1.0 / n)) ops
-      ps = M.fromList $ map (\x -> (x, 0.5)) ops
-      m = 0.5
 
 -- | A float in [0, 1] whether a particular application of a given operation is likely to
 -- be persistently applied given a particular profile.

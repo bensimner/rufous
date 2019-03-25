@@ -39,7 +39,7 @@ data RufousOptions =
       { signature :: S.Signature
       , profiles :: [P.Profile]
       , dugs :: [D.DUG]
-      , averageDugSize :: Int
+      , averageDugSizes :: [Int]
       , numberOfTests :: Int
       , debug :: Bool
       , debugOptions :: DebugOptions
@@ -88,7 +88,7 @@ args =
       { signature=error "args :: no signature specified"
       , profiles=[]
       , dugs=[]
-      , averageDugSize=1000
+      , averageDugSizes=[10, 100, 1000, 5000]
       , numberOfTests=100
       , debug=False
       , debugOptions=debugArgs

@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, FlexibleInstances #-}
+{-# LANGUAGE TemplateHaskell, FlexibleInstances, BangPatterns #-}
 module Test.Rufous
 (
    -- Main API
@@ -61,13 +61,26 @@ rufousAggregate opts rs =
          Opt.verboseTrace opts $ "Using KMeans aggregation with " ++ show (Opt.aggregationOptions opts)
          Agg.aggregateKMeans (Opt.kmeansOptions (Opt.aggregationOptions opts)) rs
 
+runRufousOnDug ::
+      Opt.RufousOptions
+   -> S.Signature
+   -> S.Implementation
+   -> [S.Implementation]
+   -> Int
+   -> (Int, D.DUG)
+   -> IO R.Result
+runRufousOnDug opts s nul impls n (i, dug) = do
+   !r <- R.run s dug nul impls
+   Opt.verboseTrace opts ("$[" ++ show i ++ "/" ++ show n ++ "]")
+   return r
+
 -- | runs Rufous on a set of DUGs to get timing info for each of them
 runRufousOnDugs :: Opt.RufousOptions -> S.Signature -> [D.DUG] -> IO ()
 runRufousOnDugs opts s dugs = do
    let nul = s ^. S.nullImpl
    let impls = s ^. S.implementations
    Opt.verboseTrace opts ("Found Null Implementation: " ++ show nul)
-   results <- mapM (\d -> R.run s d nul impls) dugs
+   results <- mapM (runRufousOnDug opts s nul impls (length dugs)) (zip [1..] dugs)
    Opt.verboseTrace opts ("Got " ++ show (length results) ++ " results")
    agg <- rufousAggregate opts results
    Se.select s agg
@@ -76,10 +89,12 @@ runRufousOnDugs opts s dugs = do
 runRufousOnProfiles :: Opt.RufousOptions -> S.Signature -> [P.Profile] -> IO ()
 runRufousOnProfiles opts s profiles = do
    dugs <- sequence $ do
-               (i, p) <- zip [1..] profiles
+               (i, !p) <- zip [1..] profiles
                return $ do
                   Opt.verboseTrace opts $ "... " ++ show i ++ "/" ++ show (length profiles)
-                  G.generateDUG opts s p (Opt.averageDugSize opts)
+                  Opt.debugTrace opts $ "generating of size " ++ show (p^.P.size)
+                  !g <- G.generateDUG opts s p
+                  return g
    Opt.verboseTrace opts ("Generated " ++ show (length dugs) ++ " random DUGs from those profiles")
 
    Opt.debugTrace opts ("These DUGs have the following extracted profiles:")
@@ -100,9 +115,10 @@ mainWith opts = do
    let s = Opt.signature opts
    Opt.verboseTrace opts ("Found implementations: " ++ show (s^.S.implementations))
 
+   let avgSizes = Opt.averageDugSizes opts
    ps <-
       if null (Opt.profiles opts)
-         then sequence (replicate (Opt.numberOfTests opts) (S.randomProfile s))
+         then sequence (replicate (Opt.numberOfTests opts) (S.randomProfile avgSizes s))
          else return (Opt.profiles opts)
 
    Opt.verboseTrace opts ("Generated " ++ show (length ps) ++ " random profiles")

@@ -28,13 +28,15 @@ makeTable :: S.Signature -> [Agg.AggregatedResult] -> T.Table String
 makeTable s rs = T.Table (makeHeader s) (map (\r -> makeRow s r) rs)
 
 makeHeader :: S.Signature -> [String]
-makeHeader s = ["Ntests"]
-               ++ [show opName ++ " count" | opName <- M.keys (s ^. S.operations)]
+makeHeader s = ["#tests"]
+               ++ ["#versions"]
+               ++ [show opName ++ " weight" | opName <- M.keys (s ^. S.operations)]
                ++ ["mortality", "pmf", "pof"]
                ++ [i ^. S.implName | i <- s^.S.implementations]
 
 makeRow :: S.Signature -> Agg.AggregatedResult -> [String]
 makeRow s ar = [show (length (ar ^. Agg.aggResults))]
+               ++ [show (p^.P.size)]
                ++ [(getWeight p opName) | opName <- M.keys (s ^. S.operations)]
                ++ [ppFloat (p^.P.mortality)]
                ++ [ppFloat (S.pmf s p)]
