@@ -53,7 +53,4 @@ doPadding t = Table hd rs
 -- such that K + L == N
 splitPad :: Int -> (Int, Int)
 splitPad p =
-   if (p `mod` 2) == 0 then
-      (p `div` 2, p `div` 2)
-   else
-      (1 + (p `div` 2), p `div` 2)
+   (p-1, 1)
