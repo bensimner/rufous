@@ -76,4 +76,4 @@ instance Queue ShadowQueue where
 makeADTSignature ''Queue
 
 main :: IO ()
-main = mainWith args{signature=_Queue, averageDugSize=100, numberOfTests=10}
+main = mainWith args{signature=_Queue, verbose=True, averageDugSizes=[100, 1000], numberOfTests=10}

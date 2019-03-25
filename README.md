@@ -17,7 +17,7 @@ To install and run the Queue example:
 Usage 
 -----
 
-(See https://github.com/bensimner/rufous/tree/master/rufous-tests/exe/ for full examples)
+(See https://github.com/bensimner/rufous/tree/master/rufous-tests/examples/ for full examples)
 
 Given an abstract data type as a Haskell typeclass, and a set of implementations, generate and run a set of example usages and compute the on-average "best" structure:
 
