@@ -18,7 +18,12 @@ data Null x = NullImpl
 data Arg v n i b = Version v | NonVersion (NVA n i b)
   deriving (Eq, Show)
 data NVA n i b = VersionParam n | IntArg i | BoolArg b
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance (Show i, Show b) => Show (NVA n i b) where
+   show (VersionParam v) = "VersionParam"
+   show (IntArg i) = "(IntArg " ++ show i ++ ")"
+   show (BoolArg b) = "(BoolArg " ++ show b ++ ")"
 
 -- TODO: it would be good to replace the IntArg/BoolArg constructors with a simple
 type ArgType = Arg () () () ()

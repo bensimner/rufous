@@ -19,6 +19,10 @@ module Test.Rufous
 
    -- TH Constructor
    , TH.makeADTSignature
+
+   -- DUG Extraction
+   , E.extract
+   , E.Extracted
 )
 where
 
@@ -35,6 +39,7 @@ import qualified Test.Rufous.Run as R
 import qualified Test.Rufous.Select as Se
 import qualified Test.Rufous.TH as TH
 import qualified Test.Rufous.Aggregate as Agg
+import qualified Test.Rufous.Extract as E
 
 -- | Case for guard on a shadow operation failing
 --

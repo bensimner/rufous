@@ -21,9 +21,9 @@ program = print $ listhead v0
          v1 = listcons 2 v2
          v2 = listcons 3 v4
          v3 = listcons 4 v4
-         v4 = listempty
+         v4 = listempty :: Extracted []
 
 main :: IO ()
 main = do
-   ((), dug) <- extract _ListADT program
-   print dug
+   (_, dug) <- extract _ListADT program
+   print ()
