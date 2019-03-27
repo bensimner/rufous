@@ -37,8 +37,25 @@ state :: MVar (ExtractorState t x)
 state = unsafePerformIO $ newEmptyMVar
 {-# NOINLINE state #-}
 
-extract :: IO a -> IO (a, ExtractedDUG)
-extract = undefined
+unpickedWrapped :: S.Signature -> WrappedADT t x -> (S.Operation, 
+
+createDUGfromBirths :: S.Signature -> [WrappedADT t x] -> ExtractedDUG
+createDUGfromBirths s births' = go (D.emptyDUG "extracted") births'
+   where
+      go d [] = d
+      go d (b:bs) =
+         let (sop, dargs, dyn) = unpickWrapped s b
+         let d' = D.pushNew sop dargs dyn d in
+         go d' bs
+
+extract :: S.Signature -> IO a -> IO (a, ExtractedDUG)
+extract s a = do
+   let st = emptyExtractorState
+   putMVar state st
+   v <- a
+   st' <- takeMVar state
+   let dug = createDUGfromBirths s (births st')
+   return (v, dug)
 
 _log_operation :: String -> [ExtractArg t x] -> t x -> WrappedADT t x
 _log_operation opName args x = unsafePerformIO $ updateWrapper opName args (S.Version x)
