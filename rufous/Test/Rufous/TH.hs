@@ -202,25 +202,30 @@ mkExtractorImplFromPair (name, args) = do
    let patterns = mkPats (init args)
    -- i.e. ``f x y = _log_operation "f" [NonVersion x, Version y] (f (x) (getVersion (y)))``
    let pats = map (^. _1) patterns
-   let call = buildCall name' patterns
+   let call = buildCall name' (zip [0..] patterns)
    let versionExps = patsToVersions patterns
    let versionsExp = expsToExp versionExps
    if not . isVersion . last $ args then do
-      impl' <- [| _log_observer $nameLit $versionsExp $call |] 
+      impl' <- [| let curId = _get_id() in _log_observer curId $nameLit $(call [| curId |] ) |]
       return $ [FunD name' [Clause pats (NormalB $ impl') []]]
    else do
-      impl' <- [| _log_operation $nameLit $versionsExp $call |] 
+      impl' <- [| let curId = _get_id() in _log_operation curId $nameLit $(call [| curId |] ) |]
       return $ [FunD name' [Clause pats (NormalB $ impl') []]]
 
-buildCall :: Name -> [(Pat, Arg Name Name Name Name)] -> Q Exp
-buildCall n xs = go xs [| $(return $ VarE n) |]
+buildCall :: Name -> [(Integer, (Pat, Arg Name Name Name Name))] -> Q Exp -> Q Exp
+buildCall n xs curId = go xs [| $(return $ VarE n) |]
    where
       go [] f = f
-      go ((_, arg) : cs) f = go cs [| $f $(mkArg arg) |]
-      mkArg (Version v) = [| getVersion $(return $ VarE $ v) |]
-      mkArg (NonVersion (VersionParam v)) = [| $(return $ VarE $ v) |]
-      mkArg (NonVersion (IntArg v)) = [| $(return $ VarE $ v) |]
-      mkArg (NonVersion (BoolArg v)) = [| $(return $ VarE $ v) |]
+      go ((i, (_, arg)) : cs) f = go cs [| $f $(mkArg i arg) |]
+      mkArg i (Version v) = 
+            let ivar = return $ LitE $ IntegerL i in
+            [| unwrap $curId $ivar $(return $ VarE $ v) |]
+      mkArg i (NonVersion (VersionParam v)) =
+            let var = return $ VarE $ v in
+            let ivar = return $ LitE $ IntegerL i in
+            [| nonversion $curId $ivar (NonVersion (VersionParam $var)) $var  |]
+      mkArg i (NonVersion (IntArg v)) = fail "Fatal error generating extracted ADT: Int Args not implemented"
+      mkArg i (NonVersion (BoolArg v)) = fail "Fatal error generating extracted ADT: Boolean Args not implemented"
 
 
 patsToVersions :: [(Pat, Arg Name Name Name Name)] -> [Q Exp]

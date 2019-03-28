@@ -26,4 +26,4 @@ program = print $ listhead v0
 main :: IO ()
 main = do
    (_, dug) <- extract _ListADT program
-   print ()
+   print dug

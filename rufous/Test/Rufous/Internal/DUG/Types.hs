@@ -14,7 +14,7 @@ data Node =
    Node
       { _nodeId :: Int  -- Invariant: (DUG^.operations ! i)^.nodeId == i
       , _operation :: S.Operation
-      , _args :: [DUGArg]
+      , _args :: [DUGArg]  -- Version (-1) => undefined
       , _shadow :: Dynamic
       }
 makeLenses ''Node

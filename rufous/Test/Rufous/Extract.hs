@@ -10,6 +10,7 @@ import Control.Concurrent.MVar
 
 import Data.Dynamic (Dynamic)
 
+import Data.Maybe (fromMaybe)
 import qualified Data.Map as M
 
 import qualified Test.Rufous.DUG as D
@@ -17,8 +18,8 @@ import qualified Test.Rufous.Signature as S
 
 import Data.List (intercalate)
 
--- | The type of a wrapped up ADT arg
-type ExtractArg t x = S.Arg (WrappedADT t x) x Int Bool
+-- | The type of an extracted ADT arg
+type ExtractedArg t x = S.Arg (WrappedADT t x) x Int Bool
 
 -- | The type of an unwrapped ADT arg
 type UnwrappedArg t x = S.Arg (t x) x Int Bool
@@ -33,53 +34,53 @@ type ExtractedDUG = D.DUG
 data WrappedADT t x =
   WrappedADT
       { nodeId :: Int
-      , nodeArgs :: [ExtractArg t x]
+      , nodeArg :: [ExtractedArg t x]
       , nodeOp :: String
       , value :: UnwrappedArg t x
       }
+   deriving (Show)
 
-instance Show (WrappedADT t x) where
-  show (wadt) = intercalate " " ["WrappedADT", id, op, args]
-   where id = show $ nodeId wadt
-         args = show $ nodeArgs wadt
-         op = nodeOp wadt
+data PartialDUG =
+   Partial
+      { partialNodes :: M.Map Int String            -- which nodes are which operations
+      , partialArgs :: M.Map (Int, Int) D.DUGArg    -- (caller nodeId, argN) -> arg
+      }
+   deriving (Show)
 
 -- | During extraction of a DUG the program must keep track of some state
 -- This state simply tracks the DUG as a list-of-births
 data ExtractorState t x =
    ExtractorState
-      { births :: [WrappedADT t x]
+      { partial :: PartialDUG
       , currentIndex :: Int
       }
    deriving (Show)
 
+emptyPartialDUG :: PartialDUG
+emptyPartialDUG = Partial M.empty M.empty
+
 emptyExtractorState :: ExtractorState t x
-emptyExtractorState = ExtractorState [] 0
+emptyExtractorState = ExtractorState emptyPartialDUG 0
 
 state :: MVar (ExtractorState t x)
 state = unsafePerformIO $ newEmptyMVar
 {-# NOINLINE state #-}
 
-unpickedArg :: ExtractArg t x -> D.DUGArg
-unpickedArg (S.Version wadt) = S.Version (nodeId wadt)
-unpickedArg (S.NonVersion (S.VersionParam i)) = S.NonVersion (S.VersionParam (unsafeCoerce i))
-unpickedArg (S.NonVersion (S.IntArg i)) = S.NonVersion (S.IntArg i)
-unpickedArg (S.NonVersion (S.BoolArg b)) = S.NonVersion (S.BoolArg b)
+unwrapPartial :: S.Signature -> PartialDUG -> Int -> (S.Operation, [D.DUGArg], Dynamic)   
+unwrapPartial s p i = (sop, dargs, dyn)
+   where opName = (partialNodes p) M.! i
+         sop = (s^.S.operations) M.! opName
+         dargs = [fromMaybe (S.Version (-1)) (M.lookup (i,j) (partialArgs p)) | j <- [0 .. length (sop^.S.opArgTypes) - 1]]
+         dyn = error "evaluating an extracted DUG directly is undefined."
 
-unpickedWrapped :: S.Signature -> WrappedADT t x -> (S.Operation, [D.DUGArg], Dynamic)
-unpickedWrapped s wadt = (op, dargs, dyn)
-   where op = (s^.S.operations) M.! (nodeOp wadt)
-         dargs = map unpickedArg (nodeArgs wadt)
-         dyn = undefined -- for extracted DUGs it is undefined to try evaluate them.
-
-createDUGfromBirths :: S.Signature -> [WrappedADT t x] -> ExtractedDUG
-createDUGfromBirths s births' = go (D.emptyDUG "extracted") births'
+dugFromPartial :: S.Signature -> PartialDUG -> D.DUG
+dugFromPartial s p = go (D.emptyDUG "extracted") (M.keys (partialNodes p))
    where
       go d [] = d
-      go d (b:bs) =
-         let (sop, dargs, dyn) = unpickedWrapped s b in
-         let d' = D.pushNew sop dargs dyn d in 
-         go d' bs
+      go d (i:is) =
+         let (sop, dargs, dyn) = unwrapPartial s p i in
+         let d' = D.pushNew sop dargs dyn d in
+         go d' is
 
 extract :: S.Signature -> IO a -> IO (a, ExtractedDUG)
 extract s a = do
@@ -91,27 +92,64 @@ extract s a = do
    print $ "done, taking..."
    st' <- takeMVar state
    print $ "took"
-   let dug = createDUGfromBirths s (births st')
+   let dug = dugFromPartial s (partial st')
    return (v, dug)
 
-_log_operation :: String -> [ExtractArg t x] -> t x -> WrappedADT t x
-_log_operation opName args x = unsafePerformIO $ updateWrapper opName args (S.Version x)
+_get_id :: () -> Int
+_get_id () = unsafePerformIO $ do
+   (ExtractorState p curId) <- takeMVar state
+   putMVar state (ExtractorState p (curId+1))
+   return curId
 
-_log_observer :: String -> [ExtractArg t x] -> x -> x
-_log_observer opName args x = unsafePerformIO $ do
-   _ <- updateWrapper opName args (S.NonVersion (S.VersionParam x)) -- TODO: this won't always be a version param
+_log_operation :: Int -> String -> t x -> WrappedADT t x
+_log_operation curId opName x = unsafePerformIO $ updateWrapper curId opName (S.Version x)
+
+_log_observer :: Int -> String -> x -> x
+_log_observer curId opName x = unsafePerformIO $ do
+   _ <- updateWrapper curId opName (S.NonVersion (S.VersionParam x)) -- TODO: this won't always be a version param
    return x
 
-updateWrapper :: String -> [ExtractArg t x] -> UnwrappedArg t x -> IO (WrappedADT t x)
-updateWrapper opName args v = do
+updateWrapper :: Int -> String -> UnwrappedArg t x -> IO (WrappedADT t x)
+updateWrapper curId opName v = do
    print $ ("updateWrapper", opName)
-   (ExtractorState bs i) <- takeMVar state
-   let w = WrappedADT i args opName v
-   let st' = ExtractorState (w:bs) (i+1)
+   (ExtractorState (Partial pnodes pargs) i) <- takeMVar state
+   let w = WrappedADT curId [] opName v
+   let p' = Partial (M.insert curId opName pnodes) pargs
+   let st' = ExtractorState p' i
    putMVar state st'
-   return w
+   return $ w
 
-getVersion :: WrappedADT t x -> t x
-getVersion w = case value w of
-   S.Version x -> x
-   _ -> error "getVersion :: expected version arg"
+updateArg :: Int -> Int -> D.DUGArg -> IO ()
+updateArg parentId argId darg = do
+   print ("unwrap", parentId, argId)
+   (ExtractorState (Partial pnodes pargs)  curId) <- takeMVar state
+   let p' = Partial pnodes (M.insert (parentId, argId) darg pargs)
+   let st' = ExtractorState p' curId
+   putMVar state st'
+
+unwrap :: Int -> Int -> WrappedADT t x -> t x
+unwrap parentId argId w = case value w of
+   S.Version x -> seq update x
+   _ -> error "unwrap :: expected version arg"
+   where update = unsafePerformIO $ updateArg parentId argId (S.Version (nodeId w))
+
+nonversion :: Int -> Int -> ExtractedArg t x -> a -> a
+nonversion parentId argId (S.NonVersion nva) x = seq update x
+   where update = unsafePerformIO $ updateArg parentId argId (S.NonVersion nva')
+         nva' = case nva of
+            S.VersionParam i -> S.VersionParam (unsafeCoerce i)
+            S.IntArg i -> S.IntArg i
+            S.BoolArg b -> S.BoolArg b
+
+{-
+
+class Listy t where
+   listcons :: a -> t a -> t a
+   listempty :: t a
+   listhead :: t a -> a
+
+instance Listy t => Listy (WrappedADT t) where
+   listcons x xs =
+      let curId = _get_id() in
+      _log_operation curId "listcons" (listcons (nonversion curId 0 (NonVersion (VersionArg x)) x) (unwrap curId 1 xs))
+-}
