@@ -105,7 +105,7 @@ runRufousOnProfiles opts s profiles = do
    Opt.debugTrace opts ("These DUGs have the following extracted profiles:")
    Opt.doIf Opt.debug opts $ do
       mapM_ (print . D.extractProfile s) dugs
-      Opt.doIf (Opt.dumpDugs . Opt.debugOptions) opts $ mapM_ (\d -> D.printDUG ("output/" ++ d^.D.name) d) dugs
+      Opt.doIf (Opt.dumpDugs . Opt.debugOptions) opts $ mapM_ (\d -> D.printDUGtoFile ("output/" ++ d^.D.name) d) dugs
 
    case Opt.dugs opts of
       [] -> runRufousOnDugs opts s dugs

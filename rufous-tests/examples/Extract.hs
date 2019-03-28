@@ -2,6 +2,7 @@
 module Main where
 
 import Test.Rufous
+import Test.Rufous.Internal.DUG.DotPrinter (printDUG)
 
 class ListADT t where
    listcons :: a -> t a -> t a
@@ -27,3 +28,4 @@ main :: IO ()
 main = do
    (_, dug) <- extract _ListADT program
    print dug
+   printDUG "output/" dug

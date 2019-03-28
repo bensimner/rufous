@@ -37,14 +37,14 @@ nodeAt d i = (d^.operations) M.! i
 nodes :: DUG -> [Node]
 nodes d = d ^. operations & M.elems
 
-edges :: DUG -> [(Int, Int)]
-edges d = [(v, n ^. nodeId) | n <- nodes d, S.Version v <- n^.args]
+edges :: DUG -> [(Int, Int, Int)]
+edges d = [(v, i, n ^. nodeId) | n <- nodes d, (i, S.Version v) <- zip [0..] (n^.args)]
 
 edgesTo :: DUG -> Node -> [Int]
 edgesTo _ n = [k | S.Version k <- n ^. args]
 
 edgesFrom :: DUG -> Node -> [Int]
-edgesFrom d i = [k | (j, k) <- edges d, j == i^.nodeId]
+edgesFrom d i = [k | (j, _, k) <- edges d, j == i^.nodeId]
 
 -- | Create a new empty DUG with a given name
 emptyDUG :: String -> DUG
