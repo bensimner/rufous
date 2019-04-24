@@ -200,17 +200,18 @@ mkExtractorImplFromPair (name, args) = do
    let name' = (mkName name)
    let nameLit = return $ LitE $ StringL name
    let patterns = mkPats (init args)
-   -- i.e. ``f x y = _log_operation "f" [NonVersion x, Version y] (f (x) (getVersion (y)))``
    let pats = map (^. _1) patterns
    let call = buildCall name' (zip [0..] patterns)
    let versionExps = patsToVersions patterns
    let versionsExp = expsToExp versionExps
    if not . isVersion . last $ args then do
-      impl' <- [| let curId = _get_id() in _log_observer curId $nameLit $(call [| curId |] ) |]
-      return $ [FunD name' [Clause pats (NormalB $ impl') []]]
+      impl' <- [| let curId = _get_id ($versionsExp `seq` $nameLit) in _log_observer curId $nameLit $(call [| curId |] ) |]
+      return $ [FunD name' [Clause pats (NormalB $ impl') []]
+               , PragmaD (InlineP name' NoInline FunLike AllPhases)]
    else do
-      impl' <- [| let curId = _get_id() in _log_operation curId $nameLit $(call [| curId |] ) |]
-      return $ [FunD name' [Clause pats (NormalB $ impl') []]]
+      impl' <- [| let curId = _get_id ($versionsExp `seq` $nameLit) in _log_operation curId $nameLit $(call [| curId |] ) |]
+      return $ [FunD name' [Clause pats (NormalB $ impl') []]
+               , PragmaD (InlineP name' NoInline FunLike AllPhases)]
 
 buildCall :: Name -> [(Integer, (Pat, Arg Name Name Name Name))] -> Q Exp -> Q Exp
 buildCall n xs curId = go xs [| $(return $ VarE n) |]
@@ -291,6 +292,8 @@ argTysToType _ [] = error "argTysToType :: empty type signature"
 
 aTypeToType :: Type -> ArgType -> Type
 aTypeToType ty (Version ()) = AppT ty (ConT (mkName "Int"))
+aTypeToType _ (NonVersion (VersionParam _)) = ConT (mkName "Int")
+aTypeToType _ (NonVersion (BoolArg _)) = ConT (mkName "Bool")
 aTypeToType _ (NonVersion _) = ConT (mkName "Int")
 
 userfriendlyTypeString :: Type -> String

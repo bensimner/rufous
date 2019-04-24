@@ -17,6 +17,14 @@ source-repository head
   type:     git
   location: https://github.com/bensimner/rufous
 
+library
+  exposed-modules:       ADTs.Queue.Definition
+                       , ADTs.Queue.Generate
+  build-depends:       base, rufous, random
+  hs-source-dirs:      tests
+  default-language:    Haskell2010
+  ghc-options:         -Wall -O2
+
 executable rufous-tests-example-queue
   main-is:             Queue.hs
   build-depends:       base
@@ -38,5 +46,15 @@ executable rufous-tests-example-extract
   build-depends:       base
                        , rufous
   hs-source-dirs:      examples
+  default-language:    Haskell2010
+  ghc-options:         -Wall -O2
+
+executable rufous-tests-tests
+  main-is:             Main.hs
+  build-depends:       base
+                       , rufous
+                       , rufous-tests
+                       , random
+  hs-source-dirs:      tests
   default-language:    Haskell2010
   ghc-options:         -Wall -O2
