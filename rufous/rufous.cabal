@@ -34,6 +34,7 @@ library
                        , Test.Rufous.Internal.Aggregation.KMeans
                        , Test.Rufous.Internal.Aggregation.Types
                        , Test.Rufous.Internal.DUG.DotPrinter
+                       , Test.Rufous.Internal.DUG.HsPrinter
                        , Test.Rufous.Internal.DUG.ProfileExtractor
                        , Test.Rufous.Internal.DUG.Types
                        , Test.Rufous.Internal.Evaluation.Results
