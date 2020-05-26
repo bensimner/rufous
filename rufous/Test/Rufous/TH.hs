@@ -1,6 +1,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Test.Rufous.TH (makeADTSignature) where
 
+import System.IO.Unsafe
+
 import Control.Lens
 import qualified Data.Map as M
 
@@ -205,11 +207,11 @@ mkExtractorImplFromPair (name, args) = do
    let versionExps = patsToVersions patterns
    let versionsExp = expsToExp versionExps
    if not . isVersion . last $ args then do
-      impl' <- [| let curId = _get_id ($versionsExp `seq` $nameLit) in _log_observer curId $nameLit $(call [| curId |] ) |]
+      impl' <- [| unsafePerformIO $ _get_id >>= (\curId -> return (_log_observer curId $nameLit $(call [| curId |] ) )) |]
       return $ [FunD name' [Clause pats (NormalB $ impl') []]
                , PragmaD (InlineP name' NoInline FunLike AllPhases)]
    else do
-      impl' <- [| let curId = _get_id ($versionsExp `seq` $nameLit) in _log_operation curId $nameLit $(call [| curId |] ) |]
+      impl' <- [| unsafePerformIO $ _get_id >>= (\curId -> return (_log_operation curId $nameLit $(call [| curId |] ) )) |]
       return $ [FunD name' [Clause pats (NormalB $ impl') []]
                , PragmaD (InlineP name' NoInline FunLike AllPhases)]
 

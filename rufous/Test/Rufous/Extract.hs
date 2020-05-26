@@ -103,8 +103,8 @@ _const :: Id -> a -> Id
 _const curId _ = curId
 
 {-# NOINLINE _get_id #-}
-_get_id :: a -> Id
-_get_id x = unsafePerformIO $ do
+_get_id :: IO Id
+_get_id = do
    print "_get_id"
    (ExtractorState p curId) <- takeMVar state
    putMVar state (ExtractorState p (curId+1))
