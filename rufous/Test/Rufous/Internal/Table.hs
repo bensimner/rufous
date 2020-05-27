@@ -38,7 +38,7 @@ render t = draw $ [drawBar "~" hd, drawRow hd, drawBar "+" hd] ++ (map drawRow (
          hd = header padded
          padded = doPadding annotated
          drawRow r = intercalate "|" r
-         drawBar c r = intercalate c [replicate (length c) '~' | c <- r]
+         drawBar c r = intercalate c [replicate (length w) '~' | w <- r]
          draw rs = intercalate "\n" rs
 
 doPadding :: Table (String, Int) -> Table String

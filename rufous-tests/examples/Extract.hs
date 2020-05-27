@@ -1,14 +1,9 @@
 {-# LANGUAGE TemplateHaskell, FlexibleInstances #-}
 module Main where
 
-import Debug.Trace
-import Control.Concurrent.MVar
-
 import Test.Rufous
 import qualified Test.Rufous.Internal.DUG.DotPrinter as GraphViz
 import qualified Test.Rufous.Internal.DUG.HsPrinter as SrcPrinter
-import Test.Rufous.Extract
-import Test.Rufous.Internal.Signature.Types
 
 class ListADT t where
    listcons :: a -> t a -> t a
@@ -71,6 +66,7 @@ program :: IO ()
 program = mapM_ print [o0,o2,o3,o4,o6,o7,o8,o10,o12,o15,o16,o18,o21,o22,o23,o24,o26,o27,o29,o30,o31,o34,o35,o36]
 
 -- expected extracted source
+expected_src :: [Char]
 expected_src = "\
    \o0 = listnull v1\n\
    \o2 = listnull v1\n\
@@ -110,10 +106,11 @@ expected_src = "\
    \v32 = listappend v1 v33\n\
    \v33 = listappend v11 v14"
 
+zipDefault :: b -> [b] -> [b] -> [(b, b)]
 zipDefault a (x:xs) (y:ys) = (x,y) : zipDefault a xs ys
 zipDefault a [] (y:ys) = (a,y) : zipDefault a [] ys
 zipDefault a (x:xs) [] = (x,a) : zipDefault a xs []
-zipDefault a [] [] = []
+zipDefault _ [] [] = []
 
 main :: IO ()
 main = do

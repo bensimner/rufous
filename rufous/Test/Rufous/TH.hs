@@ -70,11 +70,13 @@ makeADTSignature name = do
          let nullExtract = mkImplBuilder tyPairs nullExtractDecl
          let sig = [| Signature $ops $impls $(buildImpl nullInstanceBuilder) $(buildImpl nullExtract) $shadow  |]
          let specName = mkName $ "_" ++ (nameBase name)
-         let specPat = return $ VarP specName
+         let specPat = return (VarP specName)
          ds <- [d| $specPat = $sig |]
+         sigTy <- [t| Signature |]
+         let ts = [SigD specName sigTy]
 
          -- Return all declarations
-         return $ nullDecl : nullExtractDecl : ds ++ extractorImpls
+         return $ nullDecl : nullExtractDecl : ts ++ ds ++ extractorImpls
       _ -> fail "makeADTSignature expected class name as argument"
 
 selectBuilders :: [InstanceBuilder] -> (Maybe InstanceBuilder, [InstanceBuilder])
@@ -159,7 +161,7 @@ mkNullImplFromPairs (p:ps) = do
 mkNullImplFromPair :: Pair -> Q [Dec]
 mkNullImplFromPair (name, args) = do
    let name' = (mkName name)
-   let patterns = map (^. _1) $ mkPats (init args)
+   let patterns = map (^. _1) $ mkPats False (init args)
    if isVersion . last $ args then do
       null' <- [| NullImpl |]
       return $ [FunD name' [Clause patterns (NormalB $ null') []]]
@@ -167,13 +169,13 @@ mkNullImplFromPair (name, args) = do
       impl <- [| throw NotImplemented |]
       return  $ [FunD name' [Clause patterns (NormalB $ impl) []]]
 
-mkPats :: [ArgType] -> [(Pat, Arg Name Name Name Name)]
-mkPats ats = go ats (0 :: Int)
+mkPats :: Bool -> [ArgType] -> [(Pat, Arg Name Name Name Name)]
+mkPats readvars ats = go ats (0 :: Int)
    where
       go [] _ = []
       go (arg:args) k =
          let name' = mkName $ name k
-         in (VarP name', mkArg arg name') : go args (k + 1)
+         in (if readvars then VarP name' else WildP, mkArg arg name') : go args (k + 1)
       name k = "x" ++ show k
       mkArg (Version _) ident = Version ident
       mkArg (NonVersion (VersionParam _)) ident = NonVersion (VersionParam ident)
@@ -201,11 +203,9 @@ mkExtractorImplFromPair :: Pair -> Q [Dec]
 mkExtractorImplFromPair (name, args) = do
    let name' = (mkName name)
    let nameLit = return $ LitE $ StringL name
-   let patterns = mkPats (init args)
+   let patterns = mkPats True (init args)
    let pats = map (^. _1) patterns
    let call = buildCall name' (zip [0..] patterns)
-   let versionExps = patsToVersions patterns
-   let versionsExp = expsToExp versionExps
    if not . isVersion . last $ args then do
       impl' <- [| unsafePerformIO $ _get_id >>= (\curId -> return (_log_observer curId $nameLit $(call [| curId |] ) )) |]
       return $ [FunD name' [Clause pats (NormalB $ impl') []]
@@ -227,19 +227,8 @@ buildCall n xs curId = go xs [| $(return $ VarE n) |]
             let var = return $ VarE $ v in
             let ivar = return $ LitE $ IntegerL i in
             [| nonversion $curId $ivar (NonVersion (VersionParam $var)) $var  |]
-      mkArg _ (NonVersion (IntArg v)) = fail "Fatal error generating extracted ADT: Int Args not implemented"
-      mkArg _ (NonVersion (BoolArg v)) = fail "Fatal error generating extracted ADT: Boolean Args not implemented"
-
-
-patsToVersions :: [(Pat, Arg Name Name Name Name)] -> [Q Exp]
-patsToVersions xs = do
-   (VarP n, a) <- xs
-   let ne = return $ VarE n
-   case a of
-      Version _    -> return [| Version $ne |]
-      NonVersion (VersionParam _) -> return [| NonVersion (VersionParam $ne) |]
-      NonVersion (IntArg _) -> return [| NonVersion (IntArg $ne) |]
-      NonVersion (BoolArg _) -> return [| NonVersion (BoolArg $ne) |]
+      mkArg _ (NonVersion (IntArg _)) = fail "Fatal error generating extracted ADT: Int Args not implemented"
+      mkArg _ (NonVersion (BoolArg _)) = fail "Fatal error generating extracted ADT: Boolean Args not implemented"
 
 isShadowImpl :: InstanceBuilder -> Bool
 isShadowImpl (ty, _) =

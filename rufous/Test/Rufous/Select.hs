@@ -5,7 +5,6 @@ import Control.Lens
 
 import Text.Printf
 
-import Data.Fixed
 import Data.Time.Clock
 
 import qualified Data.Map as M

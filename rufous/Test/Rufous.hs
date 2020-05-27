@@ -94,7 +94,7 @@ runRufousOnDugs opts s dugs = do
 runRufousOnProfiles :: Opt.RufousOptions -> S.Signature -> [P.Profile] -> IO ()
 runRufousOnProfiles opts s profiles = do
    dugs <- sequence $ do
-               (i, !p) <- zip [1..] profiles
+               (i, !p) <- (zip [1..] profiles :: [(Integer,P.Profile)])
                return $ do
                   Opt.verboseTrace opts $ "... " ++ show i ++ "/" ++ show (length profiles)
                   Opt.debugTrace opts $ "generating of size " ++ show (p^.P.size)

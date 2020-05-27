@@ -21,7 +21,7 @@ data NVA n i b = VersionParam n | IntArg i | BoolArg b
   deriving (Eq)
 
 instance (Show i, Show b) => Show (NVA n i b) where
-   show (VersionParam v) = "VersionParam"
+   show (VersionParam _) = "VersionParam"
    show (IntArg i) = "(IntArg " ++ show i ++ ")"
    show (BoolArg b) = "(BoolArg " ++ show b ++ ")"
 

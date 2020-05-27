@@ -13,8 +13,8 @@ class Queuey t where
 instance Queuey [] where
    qempty = []
    qsnoc t x = t ++ [x]
-   qtail (x:xs) = xs
-   qhead (x:xs) = x
+   qtail (_:xs) = xs
+   qhead (x:_) = x
    qnull xs = null xs
 
 newtype Shadow a = S Int

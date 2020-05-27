@@ -46,8 +46,8 @@ generateCall xss = do
    a
 
 generateCalls :: Queuey t => t Int -> Int -> IO (St t)
-generateCalls e n = do
-      (xss, obs) <- go ([e],[]) n
+generateCalls e n0 = do
+      (xss, obs) <- go ([e],[]) n0
       return (xss, obs)
    where go s 0 = return s
          go s n = do

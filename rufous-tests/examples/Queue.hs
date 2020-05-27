@@ -13,7 +13,7 @@ import Test.Rufous
 
 class Queue q where
    snoc :: a -> q a -> q a
-   empty :: q a 
+   empty :: q a
    tail :: q a -> q a
    head :: q a -> a
 
@@ -32,6 +32,7 @@ instance Queue ListQueue where
 data BQueue a = BQ [a] [a]
    deriving (Show)
 
+bq :: [a] -> [a] -> BQueue a
 bq [] back = BQ (reverse back) []
 bq f b = BQ f b
 
@@ -47,13 +48,14 @@ instance Queue BQueue where
 data RQueue a = RQ [a] [a] [a]
    deriving (Show)
 
-rq fr b (s:ss) = RQ fr b ss
-rq fr b [] = RQ f' [] f'
+rq :: [a] -> [a] -> [a] -> RQueue a
+rq fr b (_:ss) = RQ fr b ss
+rq fr b0 [] = RQ f' [] f'
    where
-      f' = rotate fr b []
+      f' = rotate fr b0 []
       rotate [] [b] ss = b:ss
       rotate (f:fs) (b:bs) ss = f : rotate fs bs (b:ss)
-      
+
 
 instance Queue RQueue where
    empty = RQ [] [] []
@@ -65,7 +67,7 @@ data ShadowQueue x = ShadowQueue Int
    deriving (Show)
 
 instance Queue ShadowQueue where
-   snoc x (ShadowQueue xs) = ShadowQueue (xs + 1)
+   snoc _ (ShadowQueue xs) = ShadowQueue (xs + 1)
    empty     = ShadowQueue 0
    head (ShadowQueue xs) | xs > 0  = shadowUndefined
    head (ShadowQueue xs) | xs <= 0 = guardFailed

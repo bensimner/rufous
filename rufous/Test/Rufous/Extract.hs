@@ -15,8 +15,6 @@ import qualified Data.Map as M
 import qualified Test.Rufous.DUG as D
 import qualified Test.Rufous.Signature as S
 
-import Data.List (intercalate)
-
 -- | The type of an extracted ADT arg
 type ExtractedArg t x = S.Arg (WrappedADT t x) x Int Bool
 
@@ -150,10 +148,10 @@ nonversion !parentId !argId (S.NonVersion nva) x = seq update x
             S.VersionParam i -> S.VersionParam (unsafeCoerce i)
             S.IntArg i -> S.IntArg i
             S.BoolArg b -> S.BoolArg b
+nonversion _ _ _ _ = error "nonversion expected a NonVersion"
 {-# NOINLINE nonversion #-}
 
 {-
-
 class Listy t where
    listcons :: a -> t a -> t a
    listempty :: t a
