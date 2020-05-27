@@ -9,7 +9,7 @@ description:
 license:             BSD3
 license-file:        LICENSE
 author:              Ben Simner
-maintainer:          Ben Simner <benjsimner@gmail.com>
+maintainer:          Ben Simner <ben.simner@cl.cam.ac.uk>
 category:            Testing
 build-type:          Simple
 cabal-version:       >=1.10
