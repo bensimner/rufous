@@ -33,12 +33,12 @@ type ArgType = Arg () () () ()
 --     empty :: List a
 --     singleton :: a -> List a
 --     new :: Int -> Queue a
--- 
+--
 -- Mutators are operations that take a version and modify it, returning the new one:
 --     cons :: a -> List a -> List a
 --     snoc :: Queue a -> a -> Queue a
 --     diff :: Set a -> Set a -> Set a
--- 
+--
 -- Observers are those that take version arguments and force a value out of them:
 --     head :: List a -> a
 --     size :: Queue a -> Int
@@ -48,10 +48,10 @@ data OperationCategory = Mutator | Observer | Generator
 
 -- | An 'Implementation' is simply a set of operations with a reference to the actual
 -- functions.
--- 
+--
 -- This implementation of 'Implementation's is type unsafe.
 data ImplType = forall t. Typeable t => ImplType t
-data Implementation = 
+data Implementation =
   Implementation
       { _implName :: String
       , _implOperations :: M.Map String (Dynamic, ImplType)

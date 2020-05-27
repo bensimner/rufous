@@ -15,7 +15,7 @@ import qualified Test.Rufous.DUG as D
 import qualified Test.Rufous.Profile as P
 
 -- | Control flow between implementations and rufous is controlled
--- via exceptions. 
+-- via exceptions.
 -- a 'GuardFailed' exception indicates that the precondition on some
 -- fully-satisifed version in the DUG failed.
 -- NotImplemneted means there is no valid implementation for this

@@ -41,7 +41,7 @@ pad :: Int -> String
 pad i = replicate (3 - length unpad) '0' ++ unpad
    where unpad = show i
 
--- | Inflation is where we add new buffered operations to the 
+-- | Inflation is where we add new buffered operations to the
 -- state's buffer.  Depending on the Profile.
 inflate :: GenState ()
 inflate = genBufferedOp >>= pushBuffer

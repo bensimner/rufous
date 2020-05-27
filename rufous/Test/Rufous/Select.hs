@@ -66,10 +66,10 @@ ppNDTime t = show t
  -    empty     | 3     | 12s         | 4s        | 6s          | 2s        | ...
 data TDUG = forall a. T {tdug :: R.TimingDug a}
 
-data OpRecord = 
-   OpRecord 
+data OpRecord =
+   OpRecord
       { _opName :: String
-      , _opCount :: Int 
+      , _opCount :: Int
       , _implTotalTimes :: ImplementationTimes
       , _opDug :: TDUG
       }
@@ -79,13 +79,13 @@ makeLenses ''OpRecord
  - summary:
  -    dug   | empty count | snoc count | head count | tail count | mortality | pmf | pof | impl1 | impl2 | impl3
  -    ======+=============+============+============+============+===========+=====+=====+=======+=======+=======
- -    dug 1 | 5           | 6          | 3          | 2          | 0.6       | 0.2 | 0.3 | 12s   | 4s    | 12s  
-data SummaryRecord = 
-   SummaryRecord 
+ -    dug 1 | 5           | 6          | 3          | 2          | 0.6       | 0.2 | 0.3 | 12s   | 4s    | 12s
+data SummaryRecord =
+   SummaryRecord
       { _dug :: TDUG
       , _ops :: M.Map String Int  -- operation counts
       , _mortality :: Float
-      , _pmf :: Float -- from profile, but condensed 
+      , _pmf :: Float -- from profile, but condensed
       , _pof :: Float -- ^^^^^^^^^^^^^^^^^^^^^^^^^^^
       , _implTimes :: ImplementationTimes
       }

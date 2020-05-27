@@ -39,7 +39,7 @@ data BufferedOperation =
    deriving (Show)
 makeLenses ''BufferedOperation
 
--- | When generating we often want to create arguments to 
+-- | When generating we often want to create arguments to
 data NodeBucket =
    NodeBucket
       { _infants :: MSt.MSet Int

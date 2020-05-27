@@ -21,11 +21,11 @@ data Profile =
 makeLenses ''Profile
 
 instance Show Profile where
-   show (Profile ws ps m s) = 
-      ("{weights={" 
+   show (Profile ws ps m s) =
+      ("{weights={"
        ++ toStr ws
        ++ "}, pers={"
-       ++ toStr ps 
+       ++ toStr ps
        ++ "}, mortality="
        ++ (show m)
        ++ ", size="

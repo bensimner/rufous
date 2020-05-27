@@ -124,13 +124,13 @@ pairsToQ :: Pairs -> Q Exp
 pairsToQ ps = expsToExp $ map pairToQ $ ps
 
 pairToQ :: (String, [ArgType]) -> Q Exp
-pairToQ (name, args) = do 
+pairToQ (name, args) = do
    let var = return $ LitE $ StringL name
    let mkArg (Version ()) = [| Version () |]
        mkArg (NonVersion (VersionParam _)) = [| NonVersion (VersionParam ()) |]
        mkArg (NonVersion (IntArg _)) = [| NonVersion (IntArg ()) |]
        mkArg (NonVersion (BoolArg _)) = [| NonVersion (BoolArg ()) |]
-   let mkArgs []     = [| [] |] 
+   let mkArgs []     = [| [] |]
        mkArgs (x:xs) = [| $(mkArg x) : $(mkArgs xs) |]
    let (args', classify, retArg') = (mkArgs (init args), classifyArgs args, mkArg (last args))
    let mkClassifier' Mutator = [| Mutator |]
@@ -152,7 +152,7 @@ mkNullImpl className pairs = (inst, q)
 mkNullImplFromPairs :: Pairs -> Q [Dec]
 mkNullImplFromPairs [] = return $ []
 mkNullImplFromPairs (p:ps) = do
-   decl <- mkNullImplFromPair p 
+   decl <- mkNullImplFromPair p
    remain <- mkNullImplFromPairs ps
    return $ decl ++ remain
 
@@ -171,8 +171,8 @@ mkPats :: [ArgType] -> [(Pat, Arg Name Name Name Name)]
 mkPats ats = go ats (0 :: Int)
    where
       go [] _ = []
-      go (arg:args) k = 
-         let name' = mkName $ name k 
+      go (arg:args) k =
+         let name' = mkName $ name k
          in (VarP name', mkArg arg name') : go args (k + 1)
       name k = "x" ++ show k
       mkArg (Version _) ident = Version ident
@@ -193,7 +193,7 @@ mkExtractorImpl className pairs (instTy, _) = q
 mkExtractorImplFromPairs :: Pairs -> Q [Dec]
 mkExtractorImplFromPairs [] = return $ []
 mkExtractorImplFromPairs (p:ps) = do
-   decl <- mkExtractorImplFromPair p 
+   decl <- mkExtractorImplFromPair p
    remain <- mkExtractorImplFromPairs ps
    return $ decl ++ remain
 
@@ -220,15 +220,15 @@ buildCall n xs curId = go xs [| $(return $ VarE n) |]
    where
       go [] f = f
       go ((i, (_, arg)) : cs) f = go cs [| $f $(mkArg i arg) |]
-      mkArg i (Version v) = 
+      mkArg i (Version v) =
             let ivar = return $ LitE $ IntegerL i in
             [| unwrap $curId $ivar $(return $ VarE $ v) |]
       mkArg i (NonVersion (VersionParam v)) =
             let var = return $ VarE $ v in
             let ivar = return $ LitE $ IntegerL i in
             [| nonversion $curId $ivar (NonVersion (VersionParam $var)) $var  |]
-      mkArg i (NonVersion (IntArg v)) = fail "Fatal error generating extracted ADT: Int Args not implemented"
-      mkArg i (NonVersion (BoolArg v)) = fail "Fatal error generating extracted ADT: Boolean Args not implemented"
+      mkArg _ (NonVersion (IntArg v)) = fail "Fatal error generating extracted ADT: Int Args not implemented"
+      mkArg _ (NonVersion (BoolArg v)) = fail "Fatal error generating extracted ADT: Boolean Args not implemented"
 
 
 patsToVersions :: [(Pat, Arg Name Name Name Name)] -> [Q Exp]
@@ -242,7 +242,7 @@ patsToVersions xs = do
       NonVersion (BoolArg _) -> return [| NonVersion (BoolArg $ne) |]
 
 isShadowImpl :: InstanceBuilder -> Bool
-isShadowImpl (ty, _) = 
+isShadowImpl (ty, _) =
    case ty of
       ConT name -> "Shadow" `isPrefixOf` nameBase name
       _         -> False

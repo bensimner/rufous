@@ -67,7 +67,7 @@ state :: MVar (ExtractorState t x)
 state = unsafePerformIO $ newEmptyMVar
 {-# NOINLINE state #-}
 
-unwrapPartial :: S.Signature -> PartialDUG -> Id -> (S.Operation, [D.DUGArg], Dynamic)   
+unwrapPartial :: S.Signature -> PartialDUG -> Id -> (S.Operation, [D.DUGArg], Dynamic)
 unwrapPartial s p i = (sop, dargs, dyn)
    where opName = (partialNodes p) M.! i
          sop = (s^.S.operations) M.! opName

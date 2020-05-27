@@ -67,7 +67,7 @@ makeDynCell impl d o args = dynResult f dynArgs
          dynArgs = do
             arg <- args
             case arg of
-               S.Version i -> do 
+               S.Version i -> do
                   let Just n = d^.D.operations . at i
                   return $ n ^. D.shadow
                S.NonVersion (S.IntArg i) -> return $ toDyn i

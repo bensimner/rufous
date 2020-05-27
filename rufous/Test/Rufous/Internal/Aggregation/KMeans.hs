@@ -1,4 +1,4 @@
-module Test.Rufous.Internal.Aggregation.KMeans 
+module Test.Rufous.Internal.Aggregation.KMeans
    ( aggregateKMeans
    )
 where

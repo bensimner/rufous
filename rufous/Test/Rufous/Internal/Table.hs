@@ -43,7 +43,7 @@ render t = draw $ [drawBar "~" hd, drawRow hd, drawBar "+" hd] ++ (map drawRow (
 
 doPadding :: Table (String, Int) -> Table String
 doPadding t = Table hd rs
-   where padRow r = 
+   where padRow r =
             [let (p1, p2) = splitPad p in
              replicate p1 ' ' ++ c ++ replicate p2 ' ' | (c, p) <- r]
          hd = padRow (header t)
