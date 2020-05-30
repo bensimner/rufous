@@ -122,7 +122,8 @@ makeADTSignature name = do
 
    -- Finally build the Signature declaration
    nullImplBuilder <- mkImplBuilder adt opInfoPairs nullDecl
-   let sig = [| Signature $ops $impls $(buildImpl nullInstanceBuilder) $(buildImpl nullImplBuilder) $shadow  |]
+   let n = return $ LitE $ StringL $ nameBase name
+   let sig = [| Signature $n $ops $impls $(buildImpl nullInstanceBuilder) $(buildImpl nullImplBuilder) $shadow  |]
    let specName = mkName $ "_" ++ (nameBase name)
    let specPat = return (VarP specName)
    ds <- [d| $specPat = $sig |]
