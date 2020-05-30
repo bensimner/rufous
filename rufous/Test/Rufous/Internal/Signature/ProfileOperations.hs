@@ -5,7 +5,10 @@ import System.Random
 
 import qualified Data.Map as M
 
-import Test.Rufous.Internal.Signature.Types
+import Test.Rufous.Internal.Signature.SimpleGrammar
+import Test.Rufous.Internal.Signature.OperationType
+import Test.Rufous.Internal.Signature.SignatureType
+
 import Test.Rufous.Profile
 
 -- These are the Auburn-defined pmf and pof statistics.

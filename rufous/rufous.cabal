@@ -46,7 +46,10 @@ library
                        , Test.Rufous.Internal.Generate.Random
                        , Test.Rufous.Internal.Generate.Types
                        , Test.Rufous.Internal.Signature.ProfileOperations
-                       , Test.Rufous.Internal.Signature.Types
+                       , Test.Rufous.Internal.Signature.SimpleGrammar
+                       , Test.Rufous.Internal.Signature.OperationType
+                       , Test.Rufous.Internal.Signature.ImplementationType
+                       , Test.Rufous.Internal.Signature.SignatureType
                        , Test.Rufous.Internal.Table
   build-depends:       base
                        , random
