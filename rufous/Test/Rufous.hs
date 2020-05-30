@@ -19,6 +19,7 @@ module Test.Rufous
 
    -- TH Constructor
    , TH.makeADTSignature
+   , TH.makeExtractors
 
    -- DUG Extraction
    , E.extract
