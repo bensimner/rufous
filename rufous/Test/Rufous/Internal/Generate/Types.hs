@@ -26,7 +26,6 @@ data BufferedArg =
      Abstract S.ArgType PersistenceType
    | Concrete D.DUGArg (Maybe PersistenceType)
    deriving (Show)
-
 -- | An operation as yet uncommitted to the DUG is 'buffered'.
 -- such buffered operations contains the underlying operation signature
 -- as well as the current set of decided/undecided arguments.

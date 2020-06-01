@@ -242,16 +242,16 @@ trySatisfyNVArg (Abstract (S.NonVersion nva) _) = satisfyNVA nva
 trySatisfyNVArg _ = error "trySatisfyNVArg :: passed a non- non-version-arg"
 
 -- TODO: This. Is. Terrible.
-wrapNva :: S.NVA Int Int Bool -> BufferedArg
+wrapNva :: S.NVA Int () -> BufferedArg
 wrapNva n = Concrete (S.NonVersion n) Nothing
-satisfyNVA :: S.NVA () () () -> GenState BufferedArg
-satisfyNVA (S.IntArg _) = do
-   i <- R.genRandomR (-10, 10)
-   return $ wrapNva (S.IntArg i)
-satisfyNVA (S.BoolArg _) = do
-   i <- R.genRandomR (True, False)
-   return $ wrapNva (S.BoolArg i)
-satisfyNVA (S.VersionParam _) = do  -- Monomorphise to Int
+
+satisfyNVA :: S.NVA () () -> GenState BufferedArg
+satisfyNVA (S.ArbArg x tproxy Nothing) = do
+   v <- R.genArbitrary tproxy
+   return $ wrapNva (S.ArbArg x v Nothing)
+satisfyNVA (S.ArbArg _ _ (Just _)) =
+   error "Rufous: generation ArbArg got Just for arb type,  expected Nothing."
+satisfyNVA (S.VersionParam _) = do  -- Concretize to Int
    i <- R.genRandomR (-10, 10)
    return $ wrapNva (S.VersionParam i)
 

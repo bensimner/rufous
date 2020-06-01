@@ -6,7 +6,7 @@ import System.IO.Unsafe
 import Control.Lens
 import qualified Data.Map as M
 
-import Data.List (isPrefixOf, intercalate)
+import Data.List (isPrefixOf, intercalate, nub)
 import Data.Dynamic (toDyn)
 
 import Language.Haskell.TH
@@ -58,7 +58,7 @@ It has 4 stages:
 -- e.g. `class Queue q` => ADTDef ''Queue ''q _
 data ADTDef = ADTClass
    { adtClsName :: Name
-   , adtBoundVar :: Name  -- TODO: Maybe Name ?
+   , adtBoundVar :: String
 
    -- | to hnadle higher-kinded types like Map k v we have an interface class Mappable v with type family Key k
    -- so we store here that Key is one of the defined type family ctors,  which should later be interpreted as a NV_c(Int)
@@ -100,7 +100,7 @@ parseName name = do
 makeADTSignature :: Name -> DecsQ
 makeADTSignature name = do
    (v, sigds, insts) <- parseName name
-   boundTyVarName <- tyVarName v
+   boundTyVarName <- nameBase <$> tyVarName v
    let tyfamilies = [n | (OpenTypeFamilyD (TypeFamilyHead n _ _ _)) <- sigds]
    let adt = ADTClass name boundTyVarName tyfamilies
 
@@ -139,7 +139,7 @@ makeADTSignature name = do
 makeExtractors :: Name -> DecsQ
 makeExtractors name = do
    (v, sigds, insts) <- parseName name
-   boundTyVarName <- tyVarName v
+   boundTyVarName <- nameBase <$> tyVarName v
    let tyfamilies = [n | (OpenTypeFamilyD (TypeFamilyHead n _ _ _)) <- sigds]
    let adt = ADTClass name boundTyVarName tyfamilies
 
@@ -194,35 +194,80 @@ opPairsFromMethSig cls methName ty = do
    return (nameBase methName, args)
 
 argsFromType :: ADTDef -> Name -> Type -> Q [ArgType]
-argsFromType adt methName ty =
-   case ty of
-      ForallT _ _ ty' -> argsFromType adt methName ty'  -- unwrap the forall on the class constraint
-      AppT (AppT ArrowT lhs) rhs -> do
-         lhsArg <- argFromType adt methName lhs
-         rhsArg <- argsFromType adt methName rhs
-         return (lhsArg:rhsArg)
-      x  -> sequence [argFromType adt methName x]
+argsFromType adt@(ADTClass _ tvar _) methName ty = do
+      param_name <- get_param
+      sequence $ uncurry ($) <$> zip (argFromType adt methName param_name <$> splitTys) tyFlags
+   where
+      tyFlags = replicate (n - 1) False ++ [True]
+      n = length splitTys
+      splitTys = splitTyArgs ty
+      splitTyArgs (ForallT _ _ ty') = splitTyArgs ty'
+      splitTyArgs (AppT (AppT ArrowT lhs) rhs) = lhs : splitTyArgs rhs
+      splitTyArgs x = [x]
+      adt_params (ForallT _ _ ty') = adt_params ty'
+      adt_params (AppT (VarT v) (VarT c)) | nameBase v == tvar = [nameBase c]
+      adt_params (AppT x y) = nub $ adt_params x ++ adt_params y
+      adt_params _ = []
+      get_param =
+         case adt_params ty of
+            [] -> fail $
+               "Rufous: in method " ++ nameBase methName
+               ++ " (:: " ++ pprint ty ++ ")"
+               ++ ", found no use of container type variable " ++ tvar ++ "."
+            [x] -> return x
+            nms -> fail $
+               "Rufous: in method " ++ nameBase methName
+               ++ " (:: " ++ pprint ty ++ ")"
+               ++ ", found multiple type variable aliases for contained type: "
+               ++ intercalate "," nms ++ ";  but expected just one."
 
-argFromType :: ADTDef -> Name -> Type -> Q ArgType
-argFromType (ADTClass _ tvar tyfamilies) methName ty =
+argFromType :: ADTDef -> Name -> String -> Type -> Bool -> Q ArgType
+argFromType (ADTClass _ tvar tyfamilies) methName aty ty isRetTy = do
+   let freeTvars = nameBase <$> tyVars ty
+
+   -- class ADT t where
    case ty of
-      -- TODO: check that this is AppT (VarT clsVar)
-      AppT (VarT v) (VarT _) | v == tvar -> return $ Version ()
-      AppT (ConT v) _ | v `elem` tyfamilies -> return $ NonVersion  (IntArg ())
-      ConT name ->
-         case showName name of
-            "GHC.Types.Int" -> return $ NonVersion (IntArg ())
-            "GHC.Types.Bool" -> return $ NonVersion (BoolArg ())
-            _ -> fail $
-               "Rufous: error in signature for method "
-               ++ nameBase methName
-               ++ ". "
-               ++ "Only concrete types Int and Bool in class method signatures are supported, not "
-               ++ (nameBase name)
-      VarT _ -> return $ NonVersion (VersionParam ())
+      --  (t a)  == Version
+      AppT (VarT v) (VarT a) | nameBase v == tvar && nameBase a == aty -> return $ Version ()
+
+      -- a       == VersionParam
+      VarT v | nameBase v == aty  -> return $ NonVersion (VersionParam ())
+
+      -- v      == NonVersion (undef :: v)
+      t | tvar `notElem` freeTvars && aty `notElem` freeTvars ->
+         return $ NonVersion (ArbArg () () (Just t))
+
+      -- TyFamCtor t  == NonVersion (undef :: Int)
+      -- ... we do this as there's no way to have the ADT t constraint floating safely
+      (AppT (ConT c) (VarT v)) | c `elem` tyfamilies && nameBase v == tvar ->
+         return $ NonVersion (ArbArg () () (Just (ConT ''Int)))
+         -- (Just (ForallT [PlainTV v] [AppT (ConT clsName) (VarT v)] t))
+
+      t | tvar `elem` freeTvars -> fail $
+         "Rufous: in signature for method " ++ nameBase methName
+         ++ " (:: " ++ pprint t ++ ")"
+         ++ ", found occurrence of container type " ++ tvar
+         ++ " outside the simple form (" ++ tvar ++ " " ++ aty ++ ")."
+
+      -- -> f a  == NonVersion (undef :: f Int)
+      -- ... for return types we do not need to generate them so they can stay loosely specified
+      t | isRetTy ->
+         return $ NonVersion (ArbArg () () (Just (concretize t)))
+
+      t | aty `elem` freeTvars -> fail $
+         "Rufous: in signature for method " ++ nameBase methName
+         ++ " (:: " ++ pprint t ++ ")"
+         ++ ", found occurrence of contained type " ++ aty
+         ++ " outside the simple form (" ++ tvar ++ " " ++ aty ++ ")."
+
       x -> fail $
          "Rufous: non-simple type in signature for " ++ (nameBase methName)
-         ++ ": " ++ (pprint x) ++ " is not simple."
+         ++ ": " ++ (pprint x) ++ " cannot be interpreted as a simple type."
+
+tyVars :: Type -> [Name]
+tyVars (VarT v) = [v]
+tyVars (AppT a b) = tyVars a ++ tyVars b
+tyVars _ = []
 
 listExpr :: [Q Exp] -> Q Exp
 listExpr [] = [| [] |]
@@ -236,8 +281,10 @@ pairToOpExpr (name, args) = do
    let var = return $ LitE $ StringL name
    let mkArg (Version ()) = [| Version () |]
        mkArg (NonVersion (VersionParam _)) = [| NonVersion (VersionParam ()) |]
-       mkArg (NonVersion (IntArg _)) = [| NonVersion (IntArg ()) |]
-       mkArg (NonVersion (BoolArg _)) = [| NonVersion (BoolArg ()) |]
+       mkArg (NonVersion (ArbArg _ _ (Just t))) =
+            let undef = return $ SigE (VarE 'undefined) t in
+            [| NonVersion (ArbArg () $undef Nothing) |]
+       mkArg (NonVersion (ArbArg _ _ Nothing)) = error "Rufous: unreachable."
    let mkArgs []     = [| [] |]
        mkArgs (x:xs) = [| $(mkArg x) : $(mkArgs xs) |]
    let (args', classify, retArg') = (mkArgs (init args), classifyArgs args, mkArg (last args))
@@ -292,7 +339,7 @@ mkNullImplFromPair (name, args) = do
       impl <- [| throw NotImplemented |]
       return  $ [FunD name' [Clause patterns (NormalB $ impl) []]]
 
-mkPats :: Bool -> [ArgType] -> [(Pat, Arg Name Name Name Name)]
+mkPats :: Bool -> [ArgType] -> [(Pat, Arg Name Name Name)]
 mkPats readvars ats = go ats (0 :: Int)
    where
       go [] _ = []
@@ -302,8 +349,7 @@ mkPats readvars ats = go ats (0 :: Int)
       name k = "x" ++ show k
       mkArg (Version _) ident = Version ident
       mkArg (NonVersion (VersionParam _)) ident = NonVersion (VersionParam ident)
-      mkArg (NonVersion (IntArg _)) ident = NonVersion (IntArg ident)
-      mkArg (NonVersion (BoolArg _)) ident = NonVersion (BoolArg ident)
+      mkArg (NonVersion (ArbArg _ a b)) ident = NonVersion (ArbArg ident a b)
 
 mkExtractorImpls :: ADTDef -> Pairs -> [InstanceBuilder] -> Q [Dec]
 mkExtractorImpls cls pairs impls = sequence . map (mkExtractorImpl cls pairs) $ impls
@@ -345,7 +391,7 @@ mkExtractorImplFromPair (name, args) = do
       return $ [FunD name' [Clause pats (NormalB $ impl') []]
                , PragmaD (InlineP name' NoInline FunLike AllPhases)]
 
-buildCall :: Name -> [(Integer, (Pat, Arg Name Name Name Name))] -> Q Exp -> Q Exp
+buildCall :: Name -> [(Integer, (Pat, Arg Name Name Name))] -> Q Exp -> Q Exp
 buildCall n xs curId = go xs [| $(return $ VarE n) |]
    where
       go [] f = f
@@ -356,13 +402,12 @@ buildCall n xs curId = go xs [| $(return $ VarE n) |]
       mkArg i (NonVersion (VersionParam v)) =
             let var = return $ VarE $ v in
             let ivar = return $ LitE $ IntegerL i in
-            [| nonversion $curId $ivar (NonVersion (VersionParam $var)) $var  |]
-      mkArg i (NonVersion (IntArg v)) =
-            -- TODO: is this right?  It was 'fail'd out
+            [| nonversion $curId $ivar (NonVersion (VersionParam $var)) $var |]
+      mkArg i (NonVersion (ArbArg v _ (Just _))) =
             let var = return $ VarE $ v in
             let ivar = return $ LitE $ IntegerL i in
-            [| nonversion $curId $ivar (NonVersion (IntArg $var)) $var  |]
-      mkArg _ (NonVersion (BoolArg _)) = fail "Fatal error generating extracted ADT: Boolean Args not implemented"
+            [| nonversion $curId $ivar (NonVersion (ArbArg () $var Nothing)) $var |]
+      mkArg _ (NonVersion (ArbArg _ _ _)) = error "Rufous: unreachable."
 
 isShadowImpl :: InstanceBuilder -> Bool
 isShadowImpl (t, _) =
@@ -432,10 +477,11 @@ argTysToType ty (aty:tys) = AppT (AppT ArrowT (aTypeToType ty aty)) (argTysToTyp
 argTysToType _ [] = error "argTysToType :: empty type signature"  -- this should not actually be reachable ?
 
 aTypeToType :: Type -> ArgType -> Type
+-- t a => t Int
 aTypeToType ty (Version ()) = AppT (concretize ty) (ConT (mkName "Int"))
 aTypeToType _ (NonVersion (VersionParam _)) = ConT (mkName "Int")
-aTypeToType _ (NonVersion (BoolArg _)) = ConT (mkName "Bool")
-aTypeToType _ (NonVersion _) = ConT (mkName "Int")
+aTypeToType _ (NonVersion (ArbArg _ _ (Just t))) = t
+aTypeToType _ (NonVersion (ArbArg _ _ Nothing)) = error "Rufous: unreachable."
 
 -- concretize C a -> C Int
 concretize :: Type -> Type

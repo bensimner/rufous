@@ -3,11 +3,22 @@ module Test.Rufous.Internal.Generate.Random where
 import Control.Lens
 
 import System.Random
+import Test.QuickCheck.Random (mkQCGen)
+import Test.QuickCheck.Gen (unGen)
+import Test.QuickCheck (Arbitrary, arbitrary)
+
 import qualified Data.Set as St
 import qualified Data.Map as M
 import qualified Data.List as L
 
 import Test.Rufous.Internal.Generate.Types
+
+genArbitrary :: Arbitrary a => a -> GenState a
+genArbitrary _ = do
+   seed <- genRandomR (-1000, 1000)
+   let qc = mkQCGen seed
+   let v = unGen arbitrary qc 30
+   return v
 
 genRandomR :: Random a => (a, a) -> GenState a
 genRandomR r = do

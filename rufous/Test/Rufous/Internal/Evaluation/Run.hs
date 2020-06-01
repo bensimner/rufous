@@ -70,8 +70,8 @@ makeDynCell impl d o args = dynResult f dynArgs
                S.Version i -> do
                   let Just n = d^.D.operations . at i
                   return $ n ^. D.shadow
-               S.NonVersion (S.IntArg i) -> return $ toDyn i
-               S.NonVersion (S.BoolArg b) -> return $ toDyn b
+               S.NonVersion (S.ArbArg _ v _) ->
+                  return $ toDyn v
                S.NonVersion (S.VersionParam k) -> return $ toDyn (k :: Int)
 
 

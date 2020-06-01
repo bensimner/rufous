@@ -16,10 +16,10 @@ import qualified Test.Rufous.DUG as D
 import qualified Test.Rufous.Signature as S
 
 -- | The type of an extracted ADT arg
-type ExtractedArg t x = S.Arg (WrappedADT t x) x Int Bool
+type ExtractedArg t x = S.Arg (WrappedADT t x) x ()
 
 -- | The type of an unwrapped ADT arg
-type UnwrappedArg t x = S.Arg (t x) x Int Bool
+type UnwrappedArg t x = S.Arg (t x) x ()
 
 -- | The type of an extracted ADT
 --
@@ -103,7 +103,6 @@ _const curId _ = curId
 {-# NOINLINE _get_id #-}
 _get_id :: IO Id
 _get_id = do
-   print "_get_id"
    (ExtractorState p curId) <- takeMVar state
    putMVar state (ExtractorState p (curId+1))
    return $ curId
@@ -128,7 +127,6 @@ updateWrapper !curId opName v = do
 
 updateArg :: Id -> Int -> D.DUGArg -> IO ()
 updateArg !parentId !argId darg = do
-   print ("updateArg", parentId, argId, darg)
    (ExtractorState (Partial pnodes pargs)  curId) <- takeMVar state
    let p' = Partial pnodes (M.insert (parentId, argId) darg pargs)
    let st' = ExtractorState p' curId
@@ -146,8 +144,7 @@ nonversion !parentId !argId (S.NonVersion nva) x = seq update x
    where update = unsafePerformIO $ updateArg parentId argId (S.NonVersion nva')
          nva' = case nva of
             S.VersionParam i -> S.VersionParam (unsafeCoerce i)
-            S.IntArg i -> S.IntArg i
-            S.BoolArg b -> S.BoolArg b
+            S.ArbArg a v b -> S.ArbArg a v b
 nonversion _ _ _ _ = error "nonversion expected a NonVersion"
 {-# NOINLINE nonversion #-}
 

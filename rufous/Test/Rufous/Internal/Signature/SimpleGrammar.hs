@@ -1,4 +1,4 @@
-
+{-# LANGUAGE RankNTypes, GADTs #-}
 -- | Operations of an ADT are described by a 'Simple' grammar
 -- whose terminals are only:
 --   V        for versions of the data structure
@@ -12,6 +12,10 @@
 --      ... etc
 module Test.Rufous.Internal.Signature.SimpleGrammar where
 
+import Data.Typeable (Typeable)
+import Language.Haskell.TH (Type, pprint)
+import Test.QuickCheck.Arbitrary
+
 -- | Each argument in a DUG is either a version argument, pointing to another node in the DUG,
 -- or a NonVersion argument.  Each NonVersion argument can be one of a fixed set of
 -- monomorphic types or the polymorphic argument to the datatype (the so-called Version
@@ -21,21 +25,20 @@ module Test.Rufous.Internal.Signature.SimpleGrammar where
 --              NonVersion (VersionParam _) -> Version _ -> Version _
 --              aka NV_p -> V -> V
 --          insert :: k -> v -> Map k v -> Map k v becomes
---              NonVersion (IntArg _) -> NonVersion (VersionParam _) -> Version _
+--              NonVersion (ArbArg _) -> NonVersion (VersionParam _) -> Version _
 --              aka NV_c(Int) -> NV_p -> V
 
-data Arg v n i b = Version v | NonVersion (NVA n i b)
-  deriving (Eq, Show)
-data NVA n i b = VersionParam n | IntArg i | BoolArg b  -- hard code NV_c(Int) and NV_c(Bool) for now ...
-  deriving (Eq)
+data Arg v n a = Version v | NonVersion (NVA n a)
+  deriving (Show)
+data NVA n a = VersionParam n | forall b. (Typeable b, Arbitrary b) => ArbArg a b (Maybe Type)
 
-instance (Show i, Show b) => Show (NVA n i b) where
-   show (VersionParam _) = "VersionParam"
-   show (IntArg i) = "(IntArg " ++ show i ++ ")"
-   show (BoolArg b) = "(BoolArg " ++ show b ++ ")"
+instance (Show n, Show a) => Show (NVA n a) where
+   show (VersionParam n) = "(VersionParam " ++ show n ++ ")"
+   show (ArbArg a _ (Just ty)) = "(ArbArg " ++ show a ++ " (? :: " ++ pprint ty ++ ") _ _)"
+   show (ArbArg a _ Nothing) = "(ArbArg " ++ show a ++ ")"
 
 -- ArgTypes are proxies of Arg
-type ArgType = Arg () () () ()
+type ArgType = Arg () () ()
 
 -- | Each operation is categorized into one of a Mutator, Observer or Generator.
 -- Generators are operations that produce versions from arguments:

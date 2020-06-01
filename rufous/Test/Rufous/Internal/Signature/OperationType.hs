@@ -1,4 +1,4 @@
-{-# LANGUAGE StandaloneDeriving, TemplateHaskell, ExistentialQuantification #-}
+{-# LANGUAGE RankNTypes, StandaloneDeriving, TemplateHaskell, ExistentialQuantification #-}
 module Test.Rufous.Internal.Signature.OperationType where
 
 import Control.Lens

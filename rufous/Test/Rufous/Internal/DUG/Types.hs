@@ -9,7 +9,7 @@ import Data.List (intercalate)
 import qualified Data.Map as M
 import qualified Test.Rufous.Signature as S
 
-type DUGArg = S.Arg Int Int Int Bool
+type DUGArg = S.Arg Int Int ()
 data Node =
    Node
       { _nodeId :: Int  -- Invariant: (DUG^.operations ! i)^.nodeId == i

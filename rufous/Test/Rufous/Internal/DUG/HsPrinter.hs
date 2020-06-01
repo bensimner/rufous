@@ -25,8 +25,7 @@ defn n = unwords [varName, "=", opName, body]
          sarg (S.Version (-1)) = "undefined"
          sarg (S.Version k) = "v" ++ show k
          sarg (S.NonVersion (S.VersionParam k)) = show k
-         sarg (S.NonVersion (S.IntArg k)) = show k
-         sarg (S.NonVersion (S.BoolArg k)) = show k
+         sarg (S.NonVersion (S.ArbArg k _ _)) = show k
 
 checkPath :: FilePath -> IO ()
 checkPath pth = do

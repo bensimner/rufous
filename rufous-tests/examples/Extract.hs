@@ -22,6 +22,7 @@ instance ListADT [] where
    listappend = (++)
 
 makeADTSignature ''ListADT
+makeExtractors ''ListADT
 
 -- * Generated Program *
 o0  = listnull v1
