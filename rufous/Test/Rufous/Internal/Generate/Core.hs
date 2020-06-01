@@ -192,16 +192,17 @@ makeShadow bop = do
    d <- use dug
    s <- use sig
    let Just shadow = s^.S.shadowImpl
-   return $ R.makeDynCell shadow d (bop^.bufOp) (dugArgs bop)
+   return $ R.makeDynCell s shadow d (bop^.bufOp) (dugArgs bop)
 
 runShadow :: BufferedOperation -> GenState (R.RunResult)
 runShadow bop = do
    s <- use sig
-   let name = bop^.bufOp^.S.opName
+   let o = bop^.bufOp
+   let name = o^.S.opName
    let Just shadowImpl = s^.S.shadowImpl
    let Just (_, implt) = shadowImpl^.S.implOperations^.at name
    shadowDyn <- makeShadow bop
-   return $ unsafePerformIO $ R.runDynCell shadowImpl implt shadowDyn
+   return $ unsafePerformIO $ R.runDynCell s o shadowImpl implt shadowDyn
 
 
 -- | Satisfying an NVA is non-trivial, we assume we've already fixed version arguments

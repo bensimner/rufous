@@ -6,6 +6,7 @@ import System.IO.Unsafe
 import Control.Lens
 import qualified Data.Map as M
 
+import Data.Char (toUpper)
 import Data.List (isPrefixOf, intercalate, nub)
 import Data.Dynamic (toDyn)
 
@@ -120,10 +121,13 @@ makeADTSignature name = do
          Nothing      -> [| Nothing |]
          Just builder -> [| Just $(buildImpl builder) |]
 
+   let forcerObs = readForcerObs adt opInfoPairs
+   let forcers = [| M.fromList $(forcerObs) |]
+
    -- Finally build the Signature declaration
    nullImplBuilder <- mkImplBuilder adt opInfoPairs nullDecl
    let n = return $ LitE $ StringL $ nameBase name
-   let sig = [| Signature $n $ops $impls $(buildImpl nullInstanceBuilder) $(buildImpl nullImplBuilder) $shadow  |]
+   let sig = [| Signature $n $ops $forcers $impls $(buildImpl nullInstanceBuilder) $(buildImpl nullImplBuilder) $shadow  |]
    let specName = mkName $ "_" ++ (nameBase name)
    let specPat = return (VarP specName)
    ds <- [d| $specPat = $sig |]
@@ -293,6 +297,40 @@ pairToOpExpr (name, args) = do
        mkClassifier' Observer = [| Observer |]
    [| ($var, Operation $var $retArg' $args' $(mkClassifier' classify)) |]
 
+
+-- | given all the operations try find force* functions
+-- e.g. given ADT t where view :: t a -> Maybe a
+-- find forceView :: Maybe a -> IO ()
+readForcerObs :: ADTDef -> Pairs -> Q Exp
+readForcerObs cls ps = maybeListExpr $ pairToForceObs cls <$> ps
+
+maybeListExpr :: [Q (Maybe Exp)] -> Q Exp
+maybeListExpr [] = [| [] |]
+maybeListExpr (e:es) = do
+   r <- e
+   case r of
+      Just x  ->
+         let e' = return x in
+            [| $e' : ($(maybeListExpr es)) |]
+      Nothing ->
+         [|       ($(maybeListExpr es)) |]
+
+pairToForceObs :: ADTDef -> (String, [ArgType]) -> Q (Maybe Exp)
+pairToForceObs _ (methName, tys) = recover (return Nothing) comp
+   where
+      comp = do
+         v <- reify (mkName ("force" ++ title methName))
+         case v of
+            VarI n _ _ -> do
+               let dynCell = AppE (VarE 'toDyn) (SigE (VarE n) (concretize forceTy))
+               let opNameLit = LitE (StringL methName)
+               -- TH >= 2.16 makes these Maybe's ?
+               return $ Just $ TupE [opNameLit, dynCell]
+            _ -> fail "torecover"
+      title (c:ws) = toUpper c : ws
+      title [] = []
+      forceTy = AppT (AppT ArrowT ret) (TupleT 0)
+      ret = aTypeToType undefined (last tys)
 
 {- |
  An `InstanceBuilder` is all the information required to create a new instance

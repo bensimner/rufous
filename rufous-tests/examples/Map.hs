@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, TypeFamilies, FlexibleInstances #-}
+{-# LANGUAGE TemplateHaskell, BangPatterns, TypeFamilies, FlexibleInstances #-}
 module Main where
 
 import Test.Rufous
@@ -12,6 +12,10 @@ class MapADT m where
    mapempty :: m v
    mapinsert :: Key m -> v -> m v -> m v
    maplookup :: Key m -> m v -> Maybe v
+
+forceMaplookup :: Maybe Int -> ()
+forceMaplookup Nothing = ()
+forceMaplookup (Just !_) = ()
 
 data ShadowMap v = Null
 
