@@ -11,7 +11,7 @@ class MapADT m where
    type Key m
    mapempty :: m v
    mapinsert :: Key m -> v -> m v -> m v
-   --maplookup :: Key m -> m v -> Maybe v
+   maplookup :: Key m -> m v -> Maybe v
 
 data ShadowMap v = Null
 
@@ -19,13 +19,13 @@ instance MapADT ShadowMap where
    type Key ShadowMap = Int
    mapempty = Null
    mapinsert _ _ _ = Null
-   --maplookup = shadowUndefined
+   maplookup = shadowUndefined
 
 instance Ord k => MapADT (DM.Map k) where
    type Key (DM.Map k) = k
    mapempty = DM.empty
    mapinsert = DM.insert
-   --maplookup = DM.lookup
+   maplookup = DM.lookup
 
 makeADTSignature ''MapADT
 
