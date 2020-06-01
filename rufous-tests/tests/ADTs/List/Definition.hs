@@ -31,3 +31,4 @@ instance Listy Shadow where
    lnull _ = shadowUndefined
 
 makeADTSignature ''Listy
+makeExtractors ''Listy

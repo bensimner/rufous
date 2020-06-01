@@ -28,3 +28,4 @@ instance Queuey Shadow where
    qnull _ = shadowUndefined
 
 makeADTSignature ''Queuey
+makeExtractors ''Queuey
