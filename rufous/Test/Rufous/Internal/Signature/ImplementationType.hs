@@ -15,11 +15,18 @@ data Implementation =
   Implementation
       { _implName :: String
       , _implOperations :: M.Map String (Dynamic, ImplType)
+      -- | the ADT can define a method 'shadowExtractor :: ADT t => t a -> ShadowTy'
+      -- this allows Rufous to check when evaluating a DUG that the shadow agrees with the output
+      -- to wrap it up as a Dynamic we need to specialize it to a particular implementation
+      , _shadowExtractor :: Maybe Dynamic
+      -- | specialization of (==) if it exists
+      -- e.g. required for Shadow* implementations when extractShadow is defined
+      , _implEq :: Maybe Dynamic
       }
 makeLenses ''Implementation
 
 instance Show Implementation where
-  show (Implementation impl _) = "<" ++ impl ++ ">"
+  show (Implementation impl _ _ _) = "<" ++ impl ++ ">"
 instance Eq Implementation where
   i1 == i2 = i1^.implName == i2^.implName
 instance Ord Implementation where

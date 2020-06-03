@@ -37,6 +37,7 @@ library
                        , Test.Rufous.Internal.DUG.HsPrinter
                        , Test.Rufous.Internal.DUG.ProfileExtractor
                        , Test.Rufous.Internal.DUG.Types
+                       , Test.Rufous.Internal.DUG.Spanning
                        , Test.Rufous.Internal.Evaluation.Results
                        , Test.Rufous.Internal.Evaluation.Run
                        , Test.Rufous.Internal.Evaluation.Types

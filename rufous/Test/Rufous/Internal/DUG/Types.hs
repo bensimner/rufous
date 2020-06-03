@@ -15,7 +15,8 @@ data Node =
       { _nodeId :: Int  -- Invariant: (DUG^.operations ! i)^.nodeId == i
       , _operation :: S.Operation
       , _args :: [DUGArg]  -- Version (-1) => undefined
-      , _shadow :: Dynamic
+      , _shadow :: Dynamic -- the shadow
+      , _dyn :: Maybe Dynamic    -- the actual underlying value
       }
 makeLenses ''Node
 
@@ -59,7 +60,7 @@ pushNew o dargs dyn dug =
       dug & operations . at newId ?~ n
    where
       newId = nextId dug
-      n = Node newId o dargs dyn
+      n = Node newId o dargs dyn Nothing
 
 size :: DUG -> Int
 size d = M.size $ d^.operations

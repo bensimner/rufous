@@ -9,6 +9,7 @@ import qualified Data.Map as M
 import Data.Char (toUpper)
 import Data.List (isPrefixOf, intercalate, nub)
 import Data.Dynamic (toDyn)
+import Data.Typeable (Typeable)
 
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax (showName)
@@ -82,6 +83,10 @@ data IMPLDef =
    | SecondOrder Cxt [Name] Type  -- SecondOrder [Key] (D.M.Map k)
    deriving (Show)
 
+implTyCtor :: IMPLDef -> Type
+implTyCtor (FirstOrder _ t) = t
+implTyCtor (SecondOrder _ _ t) = t
+
 parseName :: Name -> Q (TyVarBndr, [Dec], [InstanceDec])
 parseName name = do
    info <- reify name
@@ -105,29 +110,33 @@ makeADTSignature name = do
    let tyfamilies = [n | (OpenTypeFamilyD (TypeFamilyHead n _ _ _)) <- sigds]
    let adt = ADTClass name boundTyVarName tyfamilies
 
-   opInfoPairs <- opPairsFromMethSigs adt name sigds  -- extract method information
-   let ops = [| M.fromList $(pairsToOpExprs opInfoPairs) |]
+   -- Collect the ADT methods
+   (opInfoPairs, maybeShadowExtractPair) <- opPairsFromMethSigs adt name sigds
 
-   -- Collect all visible implementations
-   implBuilders0 <- mkImplBuilders adt opInfoPairs insts
-   let (maybeShadow, implBuilders) = select isShadowImpl implBuilders0
-   let impls = buildImpls implBuilders
+   -- collect all the instances of the class
+   -- and extract out the implementations from the Shadow (if it exists)
+   allImpls <- sequence $ mkImpl adt <$> insts
+   let (maybeShadowImpl, implInsts) = select isShadowInst allImpls
+
+   let implBuilders = attachMethods adt opInfoPairs <$> implInsts
+   let maybeShadowBuilder = attachMethods adt opInfoPairs <$> maybeShadowImpl
 
    -- Build the Null-implementation
    let (nullInstanceBuilder, qnullDecl) = mkNullImpl adt opInfoPairs
    nullDecl <- qnullDecl
 
-   let shadow = case maybeShadow of
-         Nothing      -> [| Nothing |]
-         Just builder -> [| Just $(buildImpl builder) |]
-
-   let forcerObs = readForcerObs adt opInfoPairs
-   let forcers = [| M.fromList $(forcerObs) |]
-
    -- Finally build the Signature declaration
-   nullImplBuilder <- mkImplBuilder adt opInfoPairs nullDecl
    let n = return $ LitE $ StringL $ nameBase name
-   let sig = [| Signature $n $ops $forcers $impls $(buildImpl nullInstanceBuilder) $(buildImpl nullImplBuilder) $shadow  |]
+   let ops = [| M.fromList $(pairsToOpExprs opInfoPairs) |]
+   let forcers = [| M.fromList $(readForcerObs adt opInfoPairs) |]
+   let impls = listExpr $ buildImpl maybeShadowImpl maybeShadowExtractPair <$> implBuilders
+   let nullImplementation = buildImpl maybeShadowImpl maybeShadowExtractPair nullInstanceBuilder
+   let maybeShadow = buildImpl maybeShadowImpl maybeShadowExtractPair <$> maybeShadowBuilder
+   let shadow =
+         case maybeShadow of
+            Nothing -> [| Nothing |]
+            Just s  -> [| Just $s |]
+   let sig = [| Signature $n $ops $forcers $impls $nullImplementation $shadow |]
    let specName = mkName $ "_" ++ (nameBase name)
    let specPat = return (VarP specName)
    ds <- [d| $specPat = $sig |]
@@ -147,11 +156,14 @@ makeExtractors name = do
    let tyfamilies = [n | (OpenTypeFamilyD (TypeFamilyHead n _ _ _)) <- sigds]
    let adt = ADTClass name boundTyVarName tyfamilies
 
-   opInfoPairs <- opPairsFromMethSigs adt name sigds  -- extract method information
+   -- Collect the ADT methods
+   (opInfoPairs, maybeShadowExtractPair) <- opPairsFromMethSigs adt name sigds
 
-   -- Collect all visible implementations
-   implBuilders0 <- mkImplBuilders adt opInfoPairs insts
-   let (_, implBuilders) = select isShadowImpl implBuilders0
+   -- collect all the instances of the class
+   -- and extract out the implementations from the Shadow (if it exists)
+   allImpls <- sequence $ mkImpl adt <$> insts
+   let (maybeShadowImpl, implInsts) = select isShadowInst allImpls
+   let implBuilders = attachMethods adt opInfoPairs <$> implInsts
 
    -- Make WrappedADT versions of each of them
    extractorImpls <- mkExtractorImpls adt opInfoPairs implBuilders
@@ -175,15 +187,20 @@ select f things = go things []
 type Pair = (String, [ArgType])
 type Pairs = [Pair]
 
-opPairsFromMethSigs :: ADTDef -> Name -> [Dec] -> Q Pairs
-opPairsFromMethSigs _ _ [] = return []
+opPairsFromMethSigs :: ADTDef -> Name -> [Dec] -> Q (Pairs, Maybe Pair)
+opPairsFromMethSigs _ _ [] = return ([], Nothing)
 -- can skip open type families that were collected earlier ...
 opPairsFromMethSigs cls methName ((OpenTypeFamilyD _) : decls) =
    opPairsFromMethSigs cls methName decls
 opPairsFromMethSigs cls _ ((SigD name ty) : decls) = do
    x <- opPairsFromMethSig cls name ty
-   xs <- opPairsFromMethSigs cls name decls
-   return (x:xs)
+   (xs, e) <- opPairsFromMethSigs cls name decls
+   case (e, nameBase name == "extractShadow") of
+      (es, False) -> return (x:xs, es)
+      (Nothing, True)  -> return (xs, Just x)
+      (Just _, True) -> fail $
+         "Rufous: found multiple declarations of extractShadow."  -- Unreachable ?
+
 opPairsFromMethSigs _ name (d:_) = fail $
    "Rufous: Declaration in "
    ++ (show name)
@@ -346,14 +363,19 @@ for a more complex example:
 
 Then mImplBuilder = (IMPLInst [Typeable k] [("f", ...)])
 -}
-type InstanceBuilder = (IMPLDef, [(String, Type, Type)])
+data InstanceBuilder =
+   Instance
+      { instDef :: IMPLDef
+      , instMethods :: [(String, Type, Type)]
+      }
+
 
 mkNullImpl :: ADTDef -> Pairs -> (InstanceBuilder, Q Dec)
 mkNullImpl (ADTClass className _ familyCtors) pairs = (builder, q)
    where
       vars = mkImplBuilderVars (ConT ''Null) pairs
       inst = if null familyCtors then FirstOrder [] (ConT ''Null) else SecondOrder [] familyCtors (ConT ''Null)
-      builder = (inst, vars)
+      builder = Instance inst vars
       q = do
          ds <- mkNullImplFromPairs pairs
          let tyfamilyDecs = [TySynInstD $ TySynEqn Nothing (AppT (ConT n) (ConT ''Null)) (ConT ''Int) | n <- familyCtors]
@@ -396,15 +418,17 @@ extractorTy :: ADTDef -> Type -> Q Type
 extractorTy (ADTClass nm _ _) ty = return $ AppT (ConT nm) (AppT (ConT ''WrappedADT) (concretize ty))
 
 mkExtractorImpl :: ADTDef -> Pairs -> InstanceBuilder -> Q Dec
-mkExtractorImpl cls pairs (FirstOrder _ ty, _) = do
-   ds <- mkExtractorImplFromPairs pairs
-   ety <- extractorTy cls ty
-   return $ InstanceD Nothing [] ety ds
-mkExtractorImpl cls pairs (SecondOrder _ families ty, _) = do
-   ds <- mkExtractorImplFromPairs pairs
-   ety@(AppT _ instTy) <- extractorTy cls ty
-   let tyfamilyDecs = [TySynInstD $ TySynEqn Nothing (AppT (ConT n) instTy) (ConT ''Int) | n <- families]
-   return $ InstanceD Nothing [] ety (tyfamilyDecs ++ ds)
+mkExtractorImpl cls pairs ib =
+   case instDef ib of
+      FirstOrder _ ty -> do
+         ds <- mkExtractorImplFromPairs pairs
+         ety <- extractorTy cls ty
+         return $ InstanceD Nothing [] ety ds
+      SecondOrder _ families ty -> do
+         ds <- mkExtractorImplFromPairs pairs
+         ety@(AppT _ instTy) <- extractorTy cls ty
+         let tyfamilyDecs = [TySynInstD $ TySynEqn Nothing (AppT (ConT n) instTy) (ConT ''Int) | n <- families]
+         return $ InstanceD Nothing [] ety (tyfamilyDecs ++ ds)
 
 mkExtractorImplFromPairs :: Pairs -> Q [Dec]
 mkExtractorImplFromPairs [] = return $ []
@@ -448,7 +472,10 @@ buildCall n xs curId = go xs [| $(return $ VarE n) |]
       mkArg _ (NonVersion (ArbArg _ _ _)) = error "Rufous: unreachable."
 
 isShadowImpl :: InstanceBuilder -> Bool
-isShadowImpl (t, _) =
+isShadowImpl i = isShadowInst (instDef i)
+
+isShadowInst :: IMPLDef -> Bool
+isShadowInst t =
    case t of
       FirstOrder _ ty -> go ty
       SecondOrder _ _ ty -> go ty
@@ -459,21 +486,19 @@ isShadowImpl (t, _) =
             AppT a _ -> go a
             _ -> False
 
-
-mkImplBuilders :: ADTDef -> Pairs -> [InstanceDec] -> Q [InstanceBuilder]
-mkImplBuilders _ _ [] = return []
-mkImplBuilders cls pairs insts = sequence $ map (mkImplBuilder cls pairs) insts
-
-mkImplBuilder :: ADTDef -> Pairs -> InstanceDec -> Q InstanceBuilder
-mkImplBuilder (ADTClass _ _ []) pairs (InstanceD Nothing cxts (AppT (ConT _) c) _) =
-   return (FirstOrder cxts c, mkImplBuilderVars c pairs)
--- TODO: More specific errors ...
-mkImplBuilder (ADTClass _ _ tyvars) pairs (InstanceD Nothing cxts (AppT (ConT _) c) _) =
-   return (SecondOrder cxts tyvars c, mkImplBuilderVars c pairs)
-mkImplBuilder _ _ i@(InstanceD _ _ _ _) = fail $
+mkImpl :: ADTDef -> Dec -> Q IMPLDef
+mkImpl cls (InstanceD Nothing cxts (AppT (ConT _) c) _) = return $ implF cxts c
+   where implF cxts =
+            case adtTyFamilyCtors cls of
+               [] -> FirstOrder cxts
+               tys -> SecondOrder  cxts tys
+mkImpl _ i@(InstanceD _ _ _ _) = fail $
    "Rufous: unsupported instance declaration at " ++ prettyShowDec i
-mkImplBuilder _ _ d = fail $
+mkImpl _ d = fail $
    "Rufous: expected instance declaration, not " ++ prettyShowDec d
+
+attachMethods :: ADTDef -> Pairs -> IMPLDef -> InstanceBuilder
+attachMethods _ pairs impl = Instance impl (mkImplBuilderVars (implTyCtor impl) pairs)
 
 mkImplBuilderVars :: Type -> Pairs -> [(String, Type, Type)]
 mkImplBuilderVars _ [] = []
@@ -484,16 +509,44 @@ mkImplBuilderVar ty (name, args) = (name, argTysToType ty args, aTypeToType ty f
    where
       finalArg = last args
 
-buildImpls :: [InstanceBuilder] -> Q Exp
-buildImpls [] = [| [] |]
-buildImpls (impl:impls) = [| $(buildImpl impl) : $(buildImpls impls) |]
-
-buildImpl :: InstanceBuilder -> Q Exp
+buildImpl :: Maybe IMPLDef -> Maybe Pair -> InstanceBuilder -> Q Exp
 -- TODO: Cxt ?  e.g. what to do about `instance Ord k => A (Foo k)` ?
-buildImpl (FirstOrder _ ty, pairs) = [| Implementation $(ctorNameStr) (M.fromList $(buildImplPairs pairs)) |]
-   where ctorNameStr = return $ LitE $ StringL (userfriendlyTypeString ty)
-buildImpl (SecondOrder _ _ ty, pairs) = [| Implementation $(ctorNameStr) (M.fromList $(buildImplPairs pairs)) |]
-   where ctorNameStr = return $ LitE $ StringL (userfriendlyTypeString ty)
+buildImpl maybeShadow maybeShadowExtractor i = [| Implementation $(ctorNameStr) (M.fromList $methods) $maybeShadowExtractorExp $eqTy |]
+   where ctorNameStr = return $ LitE $ StringL (userfriendlyTypeString (implTyCtor (instDef i)))
+         methods = buildImplPairs (instMethods i)
+         maybeShadowExtractorExp =
+            case (maybeShadow, maybeShadowExtractor) of
+               (_, Nothing) -> [| Nothing |]
+               (Just sh, Just shExt) -> [| Just $(shadowMethodDyn sh shExt i) |]
+               (Nothing, Just _) -> fail $
+                  "Rufous: cannot generate shadow extractors without a shadow definition."
+         eqTy =
+            case (isShadowImpl i, maybeShadowExtractor, maybeShadow) of
+               (False, _, _) -> [| Nothing |]
+               (True, Just _, Just sh) -> [| Just $(shadowEqDyn sh) |]
+               (True, Nothing, _) -> [| Nothing |]
+               -- technically this case is an error but the above catches it
+               (True, Just _, Nothing) -> [| Nothing |]
+
+shadowEqDyn :: IMPLDef -> Q Exp
+shadowEqDyn shadow = [| toDyn $eqE |]
+   where eqE = return $ SigE (VarE '(==)) eqTy
+         eqTy = (AppT (AppT ArrowT shadowTy)
+                      (AppT (AppT ArrowT shadowTy)
+                            (ConT ''Bool)))
+         shadowTy = concretize $ (AppT shadowCtorTy (ConT ''Int))
+         shadowCtorTy = implTyCtor shadow
+
+shadowMethodDyn :: IMPLDef -> Pair -> InstanceBuilder -> Q Exp
+shadowMethodDyn shadow (name,_) implIb = [| toDyn $shadowTerm |]
+   where shadowTerm = return $ SigE (VarE (mkName name)) concreteExtractTy
+         shadowCtorTy = implTyCtor shadow
+         instTy = implTyCtor (instDef implIb)
+         extractTy = AppT (AppT ArrowT
+                              (AppT instTy (ConT ''Int)))
+                              (AppT shadowCtorTy (ConT ''Int))
+         concreteExtractTy = concretize extractTy
+
 
 buildImplPairs :: [(String, Type, Type)] -> Q Exp
 buildImplPairs [] = [| [] |]

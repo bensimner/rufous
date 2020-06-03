@@ -19,12 +19,12 @@ data Signature =
   Signature
       { _signatureADTName :: String
       , _operations :: M.Map String Operation
+
       -- | these functions get used in forcing the evaluation of the result of an observer
       -- (if it exists)
       , _opObsForcers :: M.Map String Dynamic
       , _implementations :: [Implementation]
       , _nullImpl :: Implementation
-      , _nullExtractorImpl :: Implementation
       , _shadowImpl :: Maybe ShadowImplementation
       }
   deriving (Show)

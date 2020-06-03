@@ -10,6 +10,8 @@ import Data.Typeable
 
 import qualified Data.Map as M
 
+import Data.List (intercalate)
+
 import qualified Test.Rufous.Signature as S
 import qualified Test.Rufous.DUG as D
 import qualified Test.Rufous.Profile as P
@@ -28,7 +30,18 @@ instance Exception RufousException
 -- | When Running a node in a DUG there are multiple outcomes
 data RunResult =
    forall a. Typeable a =>
-      RunSuccess !a  | RunTypeMismatch | RunExcept RufousException
+      RunSuccess !a
+   | RunShadowTypeMismatch
+   | RunShadowFailure S.Implementation D.Node String String
+   | RunTypeMismatch
+   | RunExcept RufousException
+
+instance Show RunResult where
+   show (RunSuccess a) = "RunSuccess " ++ show (typeOf a)
+   show RunShadowTypeMismatch = "RunShadowTypeMismatch"
+   show (RunShadowFailure a b c d) = "RunShadowFailure " ++ intercalate " " [show a, show b, show c, show d]
+   show RunTypeMismatch = "RunTypeMismatch"
+   show (RunExcept e) = "RunExcept " ++ show e
 
 -- | 'TimingInfo' contains the time for a DUG, for each implementation
 data TimingInfo =

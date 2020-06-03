@@ -10,6 +10,7 @@ module Test.Rufous
 
    , guardFailed
    , shadowUndefined
+   , extractorUndefined
 
    -- Datatypes
    , S.Signature
@@ -45,19 +46,29 @@ import qualified Test.Rufous.Extract as E
 -- | Case for guard on a shadow operation failing
 --
 -- example:
--- instance ListADT ShadowList where
---    listhead (Shadow 0) = guardFailed
+-- > instance ListADT ShadowList where
+-- >    listhead (Shadow 0) = guardFailed
 guardFailed :: a
 guardFailed = throw R.GuardFailed
 
 -- | Case for an operation on a shadow operation that is not defined over shadows
 --
 -- example:
--- instance ListADT ShadowList where
---    listhead (Shadow 1) = shadowUndefined
+-- > instance ListADT ShadowList where
+-- >    listhead (Shadow 1) = shadowUndefined
 shadowUndefined :: a
 shadowUndefined = throw R.NotImplemented
 
+
+-- | For use as default implementation of the extractShadow function:
+--
+-- example:
+-- > class ADT t where
+-- >    ...
+-- >    extractShadow :: t a -> ShadowType a
+-- >    extractShadow = extractorUndefined
+extractorUndefined :: a
+extractorUndefined = throw R.NotImplemented
 
 -- | Aggregate a bunch of results into something more manageable to output
 rufousAggregate :: Opt.RufousOptions -> [R.Result] -> IO [Agg.AggregatedResult]
