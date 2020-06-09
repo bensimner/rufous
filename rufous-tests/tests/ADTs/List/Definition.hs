@@ -20,6 +20,8 @@ instance Listy [] where
    lnull = null
 
 newtype Shadow a = S Int
+   deriving (Show)
+
 instance Listy Shadow where
    lempty = S 0
    lcons _ (S n) = S (n+1)

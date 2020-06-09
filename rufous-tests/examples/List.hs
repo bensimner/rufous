@@ -14,6 +14,8 @@ instance ListADT [] where
    listhead = head
 
 newtype ShadowList t = S Int
+   deriving (Show)
+
 instance ListADT ShadowList where
    listcons _ (S i) = S (i + 1)
    listempty = S 0
@@ -21,6 +23,8 @@ instance ListADT ShadowList where
    listhead (S _) = shadowUndefined
 
 data FakeList a = EF | F a (FakeList a)
+   deriving (Show)
+
 instance ListADT FakeList where
    listcons y f = F y f
    listempty = EF

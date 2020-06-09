@@ -18,6 +18,8 @@ instance Queuey [] where
    qnull xs = null xs
 
 newtype Shadow a = S Int
+   deriving (Show)
+
 instance Queuey Shadow where
    qempty = S 0
    qsnoc (S n) _ = S (n+1)

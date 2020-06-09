@@ -1,21 +1,29 @@
-{-# LANGUAGE TemplateHaskell, FlexibleInstances #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE FlexibleInstances #-}
+
 module Main where
 import Prelude hiding (head, tail)
 import qualified Prelude as P
 
+import System.IO.Unsafe
+
 import Test.Rufous
-   ( makeADTSignature
-   , mainWith
-   , args
-   , RufousOptions(..)
+   ( RufousOptions(..)
+   , makeADTSignature
    , shadowUndefined
-   , guardFailed )
+   , guardFailed
+   , extractorUndefined
+   , mainWith
+   , args )
 
 class Queue q where
    snoc :: a -> q a -> q a
    empty :: q a
    tail :: q a -> q a
    head :: q a -> a
+
+   extractShadow :: q a -> ShadowQueue a
+   extractShadow = extractorUndefined
 
 -- simple list implementation
 newtype ListQueue a = ListQueue [a]
@@ -26,6 +34,8 @@ instance Queue ListQueue where
    empty = ListQueue []
    head (ListQueue xs) = P.head xs
    tail (ListQueue xs) = ListQueue $ P.tail xs
+
+   extractShadow (ListQueue xs) = ShadowQueue (length xs)
 
 
 -- double list batched queue
@@ -64,7 +74,7 @@ instance Queue RQueue where
    tail (RQ (_:f) b ss) = rq f b ss
 
 data ShadowQueue x = ShadowQueue Int
-   deriving (Show)
+   deriving (Show,Eq)
 
 instance Queue ShadowQueue where
    snoc _ (ShadowQueue xs) = ShadowQueue (xs + 1)
@@ -78,4 +88,4 @@ instance Queue ShadowQueue where
 makeADTSignature ''Queue
 
 main :: IO ()
-main = mainWith args{signature=_Queue, verbose=True, averageDugSizes=[100, 1000], numberOfTests=10}
+main = mainWith args{signature=_Queue, verbose=True, averageDugSizes=[10, 100], numberOfTests=5}

@@ -13,11 +13,16 @@ class MapADT m where
    mapinsert :: Key m -> v -> m v -> m v
    maplookup :: Key m -> m v -> Maybe v
 
+   extractShadow :: m v -> ShadowMap v
+   extractShadow = shadowUndefined
+
 forceMaplookup :: Maybe Int -> ()
 forceMaplookup Nothing = ()
 forceMaplookup (Just !_) = ()
 
 data ShadowMap v = Null
+   deriving (Show,Eq)
+
 
 instance MapADT ShadowMap where
    type Key ShadowMap = Int
