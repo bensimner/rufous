@@ -107,6 +107,7 @@ commitBop bop = do
                         nodeCounts %= M.update (Just . (+1)) v
                updateDbg failedGuards (+1)
                failure
+            _ -> error "Rufous: internal: commitBop unreachable shadow error state"
    where
       failure = do
          case bop^.life of
@@ -217,8 +218,10 @@ tryFillNVAs bop = do
       case result of
          R.RunSuccess _ -> pushBuffer bop'
          R.RunExcept R.NotImplemented -> pushBuffer bop'
-         R.RunTypeMismatch -> error "Shadow type mismatch"
          R.RunExcept R.GuardFailed -> pushBuffer bop
+         R.RunTypeMismatch -> error "Rufous: internal: shadow type mismatch"
+         _ -> error "Rufous: internal: tryFillNVAs unreachable shadow error state"
+
 
 -- | Satisfy as many of the operation's abstract version arguments as possible
 -- then place it back on the buffer.

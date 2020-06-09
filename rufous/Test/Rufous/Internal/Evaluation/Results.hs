@@ -1,5 +1,7 @@
 module Test.Rufous.Internal.Evaluation.Results
    ( mergeResults
+   , splitResultFailures
+   , splitResults
    )
 where
 
@@ -17,8 +19,15 @@ mergeResults r1 r2 =
       { _resultDUG=(r1^.resultDUG)
       , _resultProfile=mergeProfiles (r1^.resultProfile) (r2^.resultProfile)
       , _resultOpCounts=mergeMaps (r1^.resultOpCounts) (r2^.resultOpCounts)
-      , _resultTimes=mergeTimes (r1^.resultTimes) (r2^.resultTimes)
+      , _resultTimes=mergeResultTimes (r1^.resultTimes) (r2^.resultTimes)
       }
+
+mergeResultTimes :: Either b TimingInfo -> Either b TimingInfo -> Either b TimingInfo
+mergeResultTimes rt1 rt2 =
+   case (rt1,rt2) of
+      (Right r1, Right r2) -> Right $ mergeTimes r1 r2
+      (Right _, Left x) -> Left x
+      (Left x, _) -> Left x
 
 mergeTimes :: TimingInfo -> TimingInfo -> TimingInfo
 mergeTimes t1 t2 =
@@ -49,3 +58,32 @@ mergeFractionals f1 f2 = (f1 + f2) / 2.0
 
 mergeInts :: Int -> Int -> Int
 mergeInts n1 n2 = (n1 + n2) `div` 2
+
+
+-- | Given a list of possible results extract either the first failure
+-- if it exists, or the list of successes if none failed.
+splitResultFailures :: [Either ResultFailure a] -> Either ResultFailure [a]
+splitResultFailures [] = error "Rufous: internal: unreachable: could not split results failures. got []."
+splitResultFailures [Left f] = Left f
+splitResultFailures [Right r] = Right [r]
+splitResultFailures (Left f : _) = Left f
+splitResultFailures (Right t : rs) =
+   case splitResultFailures rs of
+      Left f -> Left f
+      Right xs -> Right (t : xs)
+
+-- | Given a list of possible results extract either the first failure
+-- if it exists, or the list of successes if none failed.
+splitResults :: [Result] -> Either ResultFailure [Result]
+splitResults [] = Left $ ResultFail "Cannot split Results: No Results?"
+splitResults [r] =
+   case r^.resultTimes of
+      Left f -> Left f
+      Right _ -> Right [r]
+splitResults (r:rs) =
+   case r^.resultTimes of
+      Left f -> Left f
+      Right _ ->
+         case splitResults rs of
+            Left f -> Left f
+            Right xs -> Right (r:xs)

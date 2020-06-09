@@ -367,6 +367,7 @@ data InstanceBuilder =
    Instance
       { instDef :: IMPLDef
       , instMethods :: [(String, Type, Type)]
+      , instAbstMethods :: Pairs
       }
 
 
@@ -375,7 +376,7 @@ mkNullImpl (ADTClass className _ familyCtors) pairs = (builder, q)
    where
       vars = mkImplBuilderVars (ConT ''Null) pairs
       inst = if null familyCtors then FirstOrder [] (ConT ''Null) else SecondOrder [] familyCtors (ConT ''Null)
-      builder = Instance inst vars
+      builder = Instance inst vars pairs
       q = do
          ds <- mkNullImplFromPairs pairs
          let tyfamilyDecs = [TySynInstD $ TySynEqn Nothing (AppT (ConT n) (ConT ''Null)) (ConT ''Int) | n <- familyCtors]
@@ -498,7 +499,7 @@ mkImpl _ d = fail $
    "Rufous: expected instance declaration, not " ++ prettyShowDec d
 
 attachMethods :: ADTDef -> Pairs -> IMPLDef -> InstanceBuilder
-attachMethods _ pairs impl = Instance impl (mkImplBuilderVars (implTyCtor impl) pairs)
+attachMethods _ pairs impl = Instance impl (mkImplBuilderVars (implTyCtor impl) pairs) pairs
 
 mkImplBuilderVars :: Type -> Pairs -> [(String, Type, Type)]
 mkImplBuilderVars _ [] = []
@@ -511,7 +512,7 @@ mkImplBuilderVar ty (name, args) = (name, argTysToType ty args, aTypeToType ty f
 
 buildImpl :: Maybe IMPLDef -> Maybe Pair -> InstanceBuilder -> Q Exp
 -- TODO: Cxt ?  e.g. what to do about `instance Ord k => A (Foo k)` ?
-buildImpl maybeShadow maybeShadowExtractor i = [| Implementation $(ctorNameStr) (M.fromList $methods) $maybeShadowExtractorExp $eqTy |]
+buildImpl maybeShadow maybeShadowExtractor i = [| Implementation $(ctorNameStr) (M.fromList $methods) $maybeShadowExtractorExp $eqTysExpr $showTysExpr |]
    where ctorNameStr = return $ LitE $ StringL (userfriendlyTypeString (implTyCtor (instDef i)))
          methods = buildImplPairs (instMethods i)
          maybeShadowExtractorExp =
@@ -520,22 +521,49 @@ buildImpl maybeShadow maybeShadowExtractor i = [| Implementation $(ctorNameStr) 
                (Just sh, Just shExt) -> [| Just $(shadowMethodDyn sh shExt i) |]
                (Nothing, Just _) -> fail $
                   "Rufous: cannot generate shadow extractors without a shadow definition."
-         eqTy =
+
+         showTysExpr = [| Just (M.fromList ($(listExpr $ tcDictPairs implShowDyn (instDef i)))) |] -- always create Show instances
+
+         eqTysExpr =
             case (isShadowImpl i, maybeShadowExtractor, maybeShadow) of
                (False, _, _) -> [| Nothing |]
-               (True, Just _, Just sh) -> [| Just $(shadowEqDyn sh) |]
+               (True, Just _, Just sh) -> [| Just (M.fromList ($(listExpr $ tcDictPairs implEqDyn sh))) |]
                (True, Nothing, _) -> [| Nothing |]
-               -- technically this case is an error but the above catches it
                (True, Just _, Nothing) -> [| Nothing |]
 
-shadowEqDyn :: IMPLDef -> Q Exp
-shadowEqDyn shadow = [| toDyn $eqE |]
-   where eqE = return $ SigE (VarE '(==)) eqTy
-         eqTy = (AppT (AppT ArrowT shadowTy)
-                      (AppT (AppT ArrowT shadowTy)
+         tcDictPairs g sh = map (tcDictPair g sh) (instAbstMethods i)
+         tcDictPair g sh m@(n, _) = [| ($(return $ LitE $ StringL n), $(g sh m)) |]
+
+type TCDictGen = IMPLDef -> Pair -> Q Exp
+
+-- | Generate the expression (toDyn ((==) :: t))
+-- where t is determined solely by the operation being used:
+-- for generators and mutators, t == (ImplTy Int -> ImplTy Int -> Bool)
+-- for observers of return type r then t == (r -> r -> int)
+implEqDyn :: TCDictGen
+implEqDyn = implTCDictDyn '(==) eqTy
+   where eqTy mRetTy = (AppT (AppT ArrowT mRetTy)
+                      (AppT (AppT ArrowT mRetTy)
                             (ConT ''Bool)))
-         shadowTy = concretize $ (AppT shadowCtorTy (ConT ''Int))
-         shadowCtorTy = implTyCtor shadow
+
+implShowDyn :: TCDictGen
+implShowDyn = implTCDictDyn 'show showTy
+   where showTy mRetTy = (AppT (AppT ArrowT mRetTy)
+                               (ConT ''String))
+
+implTCDictDyn :: Name -> (Type -> Type) -> TCDictGen
+implTCDictDyn nm tyBuilder impl (_, tys) = [| toDyn $methE |]
+   where methE = return $ SigE (VarE nm) methTy
+         methTy = tyBuilder mRetTy
+         implTy = concretize $ (AppT implCtorTy (ConT ''Int))
+         implCtorTy = implTyCtor impl
+         mRetArgTy = last tys
+         mRetTy =
+            case mRetArgTy of
+               Version _ -> implTy
+               NonVersion (VersionParam _) -> ConT ''Int
+               NonVersion (ArbArg _ _ (Just t)) -> t
+               NonVersion (ArbArg _ _ Nothing) -> error "unreachable"
 
 shadowMethodDyn :: IMPLDef -> Pair -> InstanceBuilder -> Q Exp
 shadowMethodDyn shadow (name,_) implIb = [| toDyn $shadowTerm |]

@@ -98,9 +98,14 @@ runRufousOnDugs opts s dugs = do
    let impls = s ^. S.implementations
    Opt.verboseTrace opts ("Found Null Implementation: " ++ show nul)
    results <- mapM (runRufousOnDug opts s nul impls (length dugs)) (zip [1..] dugs)
-   Opt.verboseTrace opts ("Got " ++ show (length results) ++ " results")
-   agg <- rufousAggregate opts results
-   Se.select s agg
+   case R.splitResults results of
+      Left (R.ResultFail f) -> do
+         putStrLn "** Failure to Evaluate DUG:"
+         mapM_ (putStrLn . ("   " ++)) (lines f)
+      Right timingResults -> do
+         Opt.verboseTrace opts ("Got " ++ show (length timingResults) ++ " results")
+         agg <- rufousAggregate opts timingResults
+         Se.select s agg
 
 -- | runs Rufous on a set of Profile by generating DUGs
 runRufousOnProfiles :: Opt.RufousOptions -> S.Signature -> [P.Profile] -> IO ()

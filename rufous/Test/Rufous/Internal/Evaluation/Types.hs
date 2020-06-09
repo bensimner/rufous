@@ -32,14 +32,14 @@ data RunResult =
    forall a. Typeable a =>
       RunSuccess !a
    | RunShadowTypeMismatch
-   | RunShadowFailure S.Implementation D.Node String String
+   | RunShadowFailure S.Implementation D.Node String
    | RunTypeMismatch
    | RunExcept RufousException
 
 instance Show RunResult where
    show (RunSuccess a) = "RunSuccess " ++ show (typeOf a)
    show RunShadowTypeMismatch = "RunShadowTypeMismatch"
-   show (RunShadowFailure a b c d) = "RunShadowFailure " ++ intercalate " " [show a, show b, show c, show d]
+   show (RunShadowFailure a b c) = "RunShadowFailure " ++ intercalate " " [show a, show b, show c]
    show RunTypeMismatch = "RunTypeMismatch"
    show (RunExcept e) = "RunExcept " ++ show e
 
@@ -52,13 +52,18 @@ data TimingInfo =
    deriving (Show)
 makeLenses ''TimingInfo
 
+
+data ResultFailure =
+      ResultFail String
+   deriving (Show)
+
 -- |  A 'Result' is the information from a single DUG run.
 data Result =
    Result
       { _resultDUG :: D.DUG
       , _resultProfile :: P.Profile
       , _resultOpCounts :: M.Map String Int
-      , _resultTimes :: TimingInfo
+      , _resultTimes :: Either ResultFailure TimingInfo
       }
    deriving (Show)
 makeLenses ''Result

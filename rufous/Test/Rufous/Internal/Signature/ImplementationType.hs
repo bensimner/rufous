@@ -21,12 +21,19 @@ data Implementation =
       , _shadowExtractor :: Maybe Dynamic
       -- | specialization of (==) if it exists
       -- e.g. required for Shadow* implementations when extractShadow is defined
-      , _implEq :: Maybe Dynamic
+      --
+      -- there's one for each operation,  but they should all be (==) specialized to whichever type
+      -- the operation returns. e.g. generators/mutators should be (toDyn ((==) :: Version v -> Version v -> Bool))
+      -- whereas observers could be (toDyn ((==) :: Maybe (a, a) -> Maybe (a, a) -> Bool))
+      , _implEq :: Maybe (M.Map String Dynamic)
+      -- | specialization of (show) if it exists
+      -- required for Shadow* implementations
+      , _implShow :: Maybe (M.Map String Dynamic)
       }
 makeLenses ''Implementation
 
 instance Show Implementation where
-  show (Implementation impl _ _ _) = "<" ++ impl ++ ">"
+  show (Implementation impl _ _ _ _) = "<" ++ impl ++ ">"
 instance Eq Implementation where
   i1 == i2 = i1^.implName == i2^.implName
 instance Ord Implementation where
