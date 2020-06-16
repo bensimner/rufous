@@ -5,8 +5,6 @@ module Main where
 import Prelude hiding (head, tail)
 import qualified Prelude as P
 
-import System.IO.Unsafe
-
 import Test.Rufous
    ( RufousOptions(..)
    , makeADTSignature
@@ -35,7 +33,7 @@ instance Queue ListQueue where
    head (ListQueue xs) = P.head xs
    tail (ListQueue xs) = ListQueue $ P.tail xs
 
-   extractShadow (ListQueue xs) = ShadowQueue (length xs)
+   extractShadow (ListQueue xs) = ShadowQueue xs
 
 
 -- double list batched queue
@@ -73,17 +71,18 @@ instance Queue RQueue where
    head (RQ (f:_) _ _) = f
    tail (RQ (_:f) b ss) = rq f b ss
 
-data ShadowQueue x = ShadowQueue Int
+data ShadowQueue x = ShadowQueue [x]
    deriving (Show,Eq)
 
 instance Queue ShadowQueue where
-   snoc _ (ShadowQueue xs) = ShadowQueue (xs + 1)
-   empty     = ShadowQueue 0
-   head (ShadowQueue xs) | xs > 0  = shadowUndefined
-   head (ShadowQueue xs) | xs <= 0 = guardFailed
+   snoc x (ShadowQueue xs) = ShadowQueue (xs ++ [x])
+   empty     = ShadowQueue []
+   head (ShadowQueue (_:y:_)) = y
+   head (ShadowQueue [y]) = y
+   head (ShadowQueue []) = guardFailed
 
-   tail (ShadowQueue xs) | xs > 0  = ShadowQueue (xs - 1)
-   tail (ShadowQueue xs) | xs <= 0 = guardFailed
+   tail (ShadowQueue (_:xs))  = ShadowQueue xs
+   tail (ShadowQueue []) = guardFailed
 
 makeADTSignature ''Queue
 

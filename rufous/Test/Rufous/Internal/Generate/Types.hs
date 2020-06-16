@@ -89,9 +89,10 @@ emptyNodeBucket = NodeBucket MSt.empty MSt.empty
 -- TODO: better seed...
 emptyGenSt :: Opt.RufousOptions -> S.Signature -> P.Profile -> String -> GenSt
 emptyGenSt o s p name = GenSt o s p Sq.empty d St.empty emptyNodeBucket emptyNodeBucket nc (mkStdGen 0) debug
-   where d = D.emptyDUG name
+   where d = D.ginfo .~ (Just empty_info) $ D.emptyDUG name
          debug = Dbg 0 0 0 0 0 M.empty 0 Sq.empty
          nc = M.empty
+         empty_info = D.GInfo (-1) p
 
 -- | The algorithm used here is stateful, and so we perform
 -- the transformations of the current gen-state imperatively in the

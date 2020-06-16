@@ -1,6 +1,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Test.Rufous.Profile where
 
+import Test.Rufous.Internal.Utils
+
 import Control.Lens
 import qualified Data.Map as M
 import Data.List (intercalate)
@@ -32,7 +34,7 @@ instance Show Profile where
        ++ (show s)
        ++ "}")
      where
-         toStr d = intercalate ", " (map (\(k, a) -> k ++ ": " ++ show a) (M.toList d))
+         toStr d = intercalate ", " (map (\(k, a) -> k ++ ": " ++ floatFmt a) (M.toList d))
 
 -- | A float in [0, 1] whether a particular application of a given operation is likely to
 -- be persistently applied given a particular profile.

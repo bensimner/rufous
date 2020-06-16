@@ -43,10 +43,13 @@ run s d nullImpl impls = do
 
 -- | check that the extracted shadows for non-observer nodes matches those of observer nodes
 checkDugShadows :: S.Signature -> D.DUG -> S.Implementation -> IO RunResult
-checkDugShadows s dug impl = collect <$> (sequence $ check <$> versions)
+checkDugShadows s dug impl = collect <$> checks
    where
-      versions = filter (not . isObserver) $ M.elems $ dug^.D.operations
-      isObserver n = n^.D.operation^.S.opCategory == S.Observer
+      allNodes = M.elems $ dug^.D.operations
+      checks = sequence $ (check <$> allNodes)
+
+      -- for each version V with Shadow S_v check if
+      --  S_v == extract V
       check n = do
          let Just (_, ity) = impl ^. S.implOperations . at (n^.D.operation^.S.opName)
          let o = n^.D.operation
@@ -60,7 +63,11 @@ checkDugShadows s dug impl = collect <$> (sequence $ check <$> versions)
          let Just (_, shadowIty) = shImpl ^. S.implOperations . at (n^.D.operation^.S.opName)
 
          -- run the dynamic cell and check it against the Shadow, timing it
-         runDynCell s o impl n ity valueDyn (Just (shadowDyn, shadowIty))
+         r <- runDynCell s o impl n ity valueDyn (Just (shadowDyn, shadowIty))
+         case r of
+            RunSuccess _ -> return r
+            RunExcept NotImplemented -> return $ RunSuccess ()
+            e -> return e
 
       collect :: [RunResult] -> RunResult
       collect [] = RunSuccess ()
@@ -203,16 +210,28 @@ runDynCell s o i n (S.ImplType retT) d maybeShadow = result
          case res of
             RunSuccess r ->
                case forcer s o of
-                  Nothing -> tryCheckShadow r
+                  Nothing -> tryCheck r
                   Just (dynforcer, S.ImplType t') -> do
                      r' <- runDyn t' fromDynamic (dynforcer `dynApp` d)
                      case r' of
-                        RunSuccess r'' -> tryCheckShadow r''
+                        RunSuccess r'' -> tryCheck r''
                         -- NotImplemented == extractorUndefined and so do not try check it
                         RunExcept NotImplemented -> return r'
                         x -> return x
             x -> return x
+
       shadowImplementation = fromJust (s^.S.shadowImpl)
+
+      -- below are just functions for checking the Shadow
+      -- for observers we can simply try check the result directly
+      -- for generators/mutators we have to extract the shadow from the result
+      -- to compare it.
+
+      tryCheck r' =
+         case o^.S.opCategory of
+            S.Observer -> tryCheckShadowObs r'
+            _ -> tryCheckShadow r'
+
       tryCheckShadow r' =
          case (maybeShadow, i^.S.shadowExtractor) of
             -- only check the shadow if there's a shadow type defined ...
@@ -223,6 +242,27 @@ runDynCell s o i n (S.ImplType retT) d maybeShadow = result
             (Just (sh, _), Just shExtr) -> do
                -- and compare it to the Node's own calculated Shadow during generation
                checkShadow (shExtr `dynApp` d) sh r'
+
+      tryCheckShadowObs r' =
+         case maybeShadow of
+            Nothing -> return $ RunSuccess r'
+            Just (sh, _) -> checkShadowObs sh d r'
+
+      checkShadowObs :: Typeable b => Dynamic -> Dynamic -> b -> IO RunResult
+      checkShadowObs shObservation observation ret =
+         case i^.S.implEq of
+            Just m -> do
+               let eqDyn = m M.! (o^.S.opName)
+               r <- runDyn False fromDynamic (eqDyn `dynApp` shObservation `dynApp` observation)
+               case r of
+                  RunSuccess b ->
+                     if unsafeCoerce b
+                        then return $ RunSuccess ret
+                        else shadowFailure shObservation ret
+                  RunExcept NotImplemented ->
+                     return $ RunSuccess ret
+                  x -> return x
+            Nothing -> return $ RunSuccess ret
 
       checkShadow :: Typeable b => Dynamic -> Dynamic -> b -> IO RunResult
       checkShadow shVersion extractedShVersion ret =
@@ -250,7 +290,7 @@ runDynCell s o i n (S.ImplType retT) d maybeShadow = result
                case showShExtractedV of
                   RunSuccess s1 ->
                      return $ RunShadowFailure i n (unsafeCoerce s1)
-                  x -> return x
+                  _ -> return $ RunShadowFailure i n "N/A"
 
 
 -- | Run a Dynamic, try force it to WHNF, then return a RunResult

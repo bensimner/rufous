@@ -3,8 +3,6 @@ module Test.Rufous.Select where
 
 import Control.Lens
 
-import Text.Printf
-
 import Data.Time.Clock
 
 import qualified Data.Map as M
@@ -15,6 +13,7 @@ import qualified Test.Rufous.Run as R
 import qualified Test.Rufous.Aggregate as Agg
 
 import qualified Test.Rufous.Internal.Table as T
+import qualified Test.Rufous.Internal.Utils as U
 
 -- | Given a list of annotated (normalised) DUGs perform a selection step
 -- which prints some information about the runtime
@@ -40,7 +39,7 @@ makeRow s ar = [show (length (ar ^. Agg.aggResults))]
                ++ [ppFloat (p^.P.mortality)]
                ++ [ppFloat (S.pmf s p)]
                ++ [ppFloat (S.pof s p)]
-               ++ [show ((tinfo^.R.times) M.! i) | i <- s^.S.implementations]
+               ++ [ppNDTime ((tinfo^.R.times) M.! i) | i <- s^.S.implementations]
    where p = r ^. R.resultProfile
          Right tinfo = r ^. R.resultTimes
          r = ar ^. Agg.aggResult
@@ -52,10 +51,10 @@ getWeight p opName =
       Nothing -> "N/A"
 
 ppFloat :: Float -> String
-ppFloat k = printf "%.2f" k
+ppFloat = U.floatFmt
 
 ppNDTime :: NominalDiffTime -> String
-ppNDTime t = show t
+ppNDTime t = ppFloat (realToFrac t) ++ "s"
 
 {-
 -- A "row" in the DUG timing tables

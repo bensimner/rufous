@@ -25,6 +25,10 @@ module Test.Rufous.Options
    , doIf
    , verboseTrace
    , debugTrace
+
+   -- | Manual trace/debug actions
+   , traceLn
+   , debugLn
    )
 where
 
@@ -105,7 +109,13 @@ doIf f opts a | f opts = a
 doIf _ _ _ = return ()
 
 verboseTrace :: RufousOptions -> String -> IO ()
-verboseTrace opts msg = doIf verbose opts (putStrLn msg)
+verboseTrace opts msg = doIf verbose opts (traceLn msg)
 
 debugTrace :: RufousOptions -> String -> IO ()
-debugTrace opts msg = doIf debug opts (putStrLn msg)
+debugTrace opts msg = doIf debug opts (debugLn msg)
+
+traceLn :: String -> IO ()
+traceLn s = mapM_ putStrLn (map ("[TRACE] " ++) (lines s))
+
+debugLn :: String -> IO ()
+debugLn s = mapM_ putStrLn (map ("[DEBUG] " ++) (lines s))

@@ -8,6 +8,7 @@ import Data.List (intercalate)
 
 import qualified Data.Map as M
 import qualified Test.Rufous.Signature as S
+import qualified Test.Rufous.Profile as P
 
 type DUGArg = S.Arg Int Int ()
 data Node =
@@ -24,10 +25,20 @@ instance Show Node where
    show n = "(" ++ intercalate " " ["Node", show $ n^.nodeId, show $ n^.operation^.S.opName, as] ++ ")"
       where as = show [i | S.Version i <- n^.args]
 
+-- | Info related to the way this DUG was generated.
+data DUGGenerationInfo =
+   GInfo
+      { _idx :: Integer  -- index 0, 1, 2, ... of generated DUG
+      , _targetProfile :: P.Profile -- the generated or supplied target profile
+      }
+   deriving (Show)
+makeLenses ''DUGGenerationInfo
+
 data DUG =
    DUG
       { _name :: String
       , _operations :: M.Map Int Node
+      , _ginfo :: Maybe DUGGenerationInfo
       }
    deriving (Show)
 makeLenses ''DUG
@@ -49,7 +60,7 @@ edgesFrom d i = [k | (j, _, k) <- edges d, j == i^.nodeId]
 
 -- | Create a new empty DUG with a given name
 emptyDUG :: String -> DUG
-emptyDUG dugName = DUG dugName M.empty
+emptyDUG dugName = DUG dugName M.empty Nothing
 
 nextId :: DUG -> Int
 nextId = length . nodes

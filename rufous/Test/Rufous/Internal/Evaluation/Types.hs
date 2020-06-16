@@ -37,7 +37,7 @@ data RunResult =
    | RunExcept RufousException
 
 instance Show RunResult where
-   show (RunSuccess a) = "RunSuccess " ++ show (typeOf a)
+   show (RunSuccess a) = "RunSuccess <" ++ show (typeOf a) ++ ">"
    show RunShadowTypeMismatch = "RunShadowTypeMismatch"
    show (RunShadowFailure a b c) = "RunShadowFailure " ++ intercalate " " [show a, show b, show c]
    show RunTypeMismatch = "RunTypeMismatch"
