@@ -15,31 +15,45 @@ import Data.Maybe (fromJust)
 
 import qualified Test.Rufous.Signature as S
 import qualified Test.Rufous.DUG as D
+import qualified Test.Rufous.Options as Opt
 import qualified Test.Rufous.Internal.DUG.HsPrinter as DP
 
 import Test.Rufous.Internal.Evaluation.Types
 import Test.Rufous.Internal.Evaluation.Results as Rs
 import qualified Test.Rufous.Internal.DUG.Spanning as MST
+import qualified Test.Rufous.Internal.Logger as Log
 
 -- | Run a DUG on some null implementation and a list of implementations
 -- and return the new annotated DUG with the timing info
-run :: S.Signature -> D.DUG -> S.Implementation -> [S.Implementation] -> IO Result
-run s d nullImpl impls = do
+run :: S.Signature -> D.DUG -> S.Implementation -> [S.Implementation] -> Int -> IO Result
+run s d nullImpl impls i = do
+   !results <- mapM (\j -> Log.doIfIO Opt.verbose (Log.updateProgress j i) >> runOnDUG s d nullImpl impls) [1..i]
+   Log.doIfIO Opt.verbose Log.endProgress
+   let extractedProfile = D.extractProfile s d
+   let opCounts = M.empty
+   return $ Result d extractedProfile opCounts (foldl1 mergeDUGTimeInfos results) results
+
+-- | Because we might want to time the same DUG multiple times over
+-- we have a function that given a (blank) DUG and an implementation
+-- it runs it and returns a new result.
+runOnDUG :: S.Signature -> D.DUG -> S.Implementation -> [S.Implementation] -> IO DUGTimeInfo
+runOnDUG s d nullImpl impls = do
+   Log.debug $ "running " ++ d^.D.name
    nullTRun <- runOn s d nullImpl
    case nullTRun of
       -- if failed to evaluate the Null implementation for whatever reason.
       Left f -> failOut f
       Right nullT -> do
+         Log.debug $ "running " ++ d^.D.name ++ ", Null time =" ++ show nullT
          implTRuns <- mapM (runOn s d) impls
          case Rs.splitResultFailures implTRuns of
             Left f -> failOut f
             Right implTs -> do
                let tinfo = TInfo nullT (M.fromList (zip impls implTs))
-               let extractedProfile = D.extractProfile s d
-               let opCounts = M.empty
-               return $ Result d extractedProfile opCounts (Right tinfo)
+               Log.debug $ "t " ++ d^.D.name ++ ", impl times =" ++ show (zip impls implTs)
+               return $ DUGEvalTimes tinfo
    where
-      failOut f = return $ Result d undefined M.empty (Left f)
+      failOut f = return $ DUGEvalFail f
 
 -- | check that the extracted shadows for non-observer nodes matches those of observer nodes
 checkDugShadows :: S.Signature -> D.DUG -> S.Implementation -> IO RunResult

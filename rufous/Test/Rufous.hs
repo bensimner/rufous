@@ -44,6 +44,7 @@ import qualified Test.Rufous.Aggregate as Agg
 import qualified Test.Rufous.Extract as E
 
 import qualified Test.Rufous.Internal.VerboseOutput as VB
+import qualified Test.Rufous.Internal.Logger as Log
 
 -- | Case for guard on a shadow operation failing
 --
@@ -77,7 +78,7 @@ rufousAggregate :: Opt.RufousOptions -> [R.Result] -> IO [Agg.AggregatedResult]
 rufousAggregate opts rs =
    case Opt.aggregator opts of
       Opt.KMeans -> do
-         Opt.verboseTrace opts $ "Using KMeans aggregation with " ++ show (Opt.aggregationOptions opts)
+         Log.info $ "Using KMeans aggregation with " ++ show (Opt.aggregationOptions opts)
          Agg.aggregateKMeans (Opt.kmeansOptions (Opt.aggregationOptions opts)) rs
 
 runRufousOnDug ::
@@ -89,33 +90,28 @@ runRufousOnDug ::
    -> (Int, D.DUG)
    -> IO R.Result
 runRufousOnDug opts s nul impls n (i, dug) = do
-   !r <- R.run s dug nul impls
-   Opt.verboseTrace opts ("Evaluating ... " ++ show i ++ "/" ++ show n)
+   !r <- R.run s dug nul impls (Opt.numberOfRuns opts)
+   Log.info $ "Evaluating ... " ++ show i ++ "/" ++ show n
    return r
 
 -- | runs Rufous on a set of DUGs to get timing info for each of them
 runRufousOnDugs :: Opt.RufousOptions -> S.Signature -> [D.DUG] -> IO ()
 runRufousOnDugs opts s dugs = do
    Opt.doIf Opt.verbose opts $ do
-      mapM_ VB.verbosePrintGeneratedDug dugs
-
-   Opt.doIf Opt.debug opts $ do
-      mapM_ VB.debugPrintGeneratedDug dugs
+      mapM_ VB.logGeneratedDUG dugs
 
    let nul = s ^. S.nullImpl
    let impls = s ^. S.implementations
-   Opt.verboseTrace opts ("Found Null Implementation: " ++ show nul)
+   Log.info $ "Found Null Implementation: " ++ show nul
    results <- mapM (runRufousOnDug opts s nul impls (length dugs)) (zip [1..] dugs)
    case R.splitResults results of
       Left (R.ResultFail f) -> do
          putStrLn "** Failure to Evaluate DUG:"
          mapM_ (putStrLn . ("   " ++)) (lines f)
       Right timingResults -> do
-         Opt.verboseTrace opts ("Got " ++ show (length timingResults) ++ " results")
+         Log.info $ "Got " ++ show (length timingResults) ++ " results"
          Opt.doIf Opt.verbose opts $ do
-            mapM_ VB.verbosePrintTimingResults timingResults
-         Opt.doIf Opt.debug opts $ do
-            mapM_ VB.debugPrintTimingResults timingResults
+            mapM_ VB.logTimingResults timingResults
          agg <- rufousAggregate opts timingResults
          Se.select s agg
 
@@ -125,16 +121,16 @@ runRufousOnProfiles opts s profiles = do
    dugs <- sequence $ do
                (i, !p) <- (zip [1..] profiles :: [(Integer,P.Profile)])
                return $ do
-                  Opt.verboseTrace opts $ "Generating ... " ++ show i ++ "/" ++ show (length profiles)
-                  Opt.debugTrace opts $ "generating of size " ++ show (p^.P.size)
+                  Log.info  $ "Generating ... " ++ show i ++ "/" ++ show (length profiles)
+                  Log.debug $ "generating of size " ++ show (p^.P.size)
                   !g <- G.generateDUG opts s p
                   let g' = g & D.ginfo . _Just . D.idx .~ i
                   return g'
 
-   Opt.verboseTrace opts ("Generated " ++ show (length dugs) ++ " random DUGs from those profiles")
+   Log.info $ "Generated " ++ show (length dugs) ++ " random DUGs from those profiles"
 
-   Opt.debugTrace opts ("These DUGs have the following extracted profiles:")
    Opt.doIf Opt.debug opts $ do
+      Log.debug $ "These DUGs have the following extracted profiles:"
       mapM_ (print . D.extractProfile s) dugs
       Opt.doIf (Opt.dumpDugs . Opt.debugOptions) opts $ mapM_ (\d -> D.printDUGtoFile ("output/" ++ d^.D.name) d) dugs
 
@@ -147,9 +143,14 @@ runRufousOnProfiles opts s profiles = do
 --   generating Profiles and DUGs and print a table of results
 --   with a generalised performance.
 mainWith :: Opt.RufousOptions -> IO ()
-mainWith opts = do
+mainWith options = do
+   let opts = Opt.normalize options
+   -- need to init the options global IORef
+   -- so that all the verbose trace stuff below works.
+   Log.initOptRef opts
+
    let s = Opt.signature opts
-   Opt.verboseTrace opts ("Found implementations: " ++ show (s^.S.implementations))
+   Log.info $ "Found implementations: " ++ show (s^.S.implementations)
 
    let avgSizes = Opt.averageDugSizes opts
    ps <-
@@ -157,5 +158,5 @@ mainWith opts = do
          then sequence (replicate (Opt.numberOfTests opts) (S.randomProfile avgSizes s))
          else return (Opt.profiles opts)
 
-   Opt.verboseTrace opts ("Generated " ++ show (length ps) ++ " random profiles")
+   Log.info $ "Generated " ++ show (length ps) ++ " random profiles"
    runRufousOnProfiles opts s ps

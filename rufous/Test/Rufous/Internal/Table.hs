@@ -1,6 +1,5 @@
 {-# LANGUAGE ExistentialQuantification #-}
 module Test.Rufous.Internal.Table where
-
 import Data.List (intercalate)
 
 data Table s =

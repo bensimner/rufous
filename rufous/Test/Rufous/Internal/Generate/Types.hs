@@ -2,10 +2,11 @@
 module Test.Rufous.Internal.Generate.Types where
 
 import Control.Monad.State
+import System.IO.Unsafe
+
 import Control.Lens hiding ((|>))
 import System.Random (StdGen, mkStdGen)
 
-import Data.Sequence ((|>))
 import qualified Data.Sequence as Sq
 import qualified Data.Set as St
 import qualified Data.Map as M
@@ -16,6 +17,8 @@ import qualified Test.Rufous.Profile as P
 import qualified Test.Rufous.Signature as S
 
 import qualified Test.Rufous.Internal.Generate.MSet as MSt
+
+import qualified Test.Rufous.Internal.Logger as Log
 
 data PersistenceType = Persistent | Ephemeral
    deriving (Show)
@@ -55,7 +58,6 @@ data DebugInfo =
       , _noLivingNodes :: Int            -- the number of times a BuffereOperation couldn't be satisfied because there were no living nodes
       , _inflatedOps :: M.Map String Int -- the number of times a BuffereOperation couldn't be satisfied because there were no living nodes
       , _deadNodes :: Int                -- a count of the number of nodes that have died so far
-      , _dbgTrace :: Sq.Seq String       -- a trace of messages created during generation
       }
    deriving (Show)
 makeLenses ''DebugInfo
@@ -90,7 +92,7 @@ emptyNodeBucket = NodeBucket MSt.empty MSt.empty
 emptyGenSt :: Opt.RufousOptions -> S.Signature -> P.Profile -> String -> GenSt
 emptyGenSt o s p name = GenSt o s p Sq.empty d St.empty emptyNodeBucket emptyNodeBucket nc (mkStdGen 0) debug
    where d = D.ginfo .~ (Just empty_info) $ D.emptyDUG name
-         debug = Dbg 0 0 0 0 0 M.empty 0 Sq.empty
+         debug = Dbg 0 0 0 0 0 M.empty 0
          nc = M.empty
          empty_info = D.GInfo (-1) p
 
@@ -114,9 +116,27 @@ updateDbg m f = do
       dbg . m %= f
    else return ()
 
+-- using unsafePerformIO here rather than storing in the GenState
+-- means we don't need to keep thunks around for random debug messages
+-- they're not part of the computation anyway...
 debugTrace :: String -> GenState ()
 debugTrace msg = do
+   () <- return $ unsafePerformIO $ Log.debug msg
+   return ()
+
+verboseProgress :: Int -> Int -> GenState ()
+verboseProgress i maxi = do
    opts <- use opt
-   if Opt.debug opts then
-      dbg . dbgTrace %= (|> msg)
-   else return ()
+   () <- if Opt.verbose opts
+            then return $ unsafePerformIO $ Log.updateProgress i maxi
+            else return ()
+   return ()
+
+verboseProgressEnd :: GenState ()
+verboseProgressEnd = do
+   verboseProgress 100 100
+   opts <- use opt
+   () <- if Opt.verboseOnly opts
+            then return $ unsafePerformIO $ Log.endProgress
+            else return ()
+   return ()

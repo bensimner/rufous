@@ -23,19 +23,30 @@ import qualified Test.Rufous.Internal.Generate.MSet as MSt
 
 -- | Build will run the inflate/deflate cycle calling inflate 'size' times.
 build :: Int -> GenState D.DUG
-build 0 = use dug
-build size = do
-   inflate
-   b <- tryDeflate
-   debugIf b flatDeflateSteps (+1)
-   d <- use dug
-   buf <- use buffer
-   alive <- use living
---   stat <- use dbg
-   if size `mod` 100 == 0 then
-      debugTrace $ "Step " ++ show (size, D.size d, length buf, St.size alive) -- , stat)
-   else return ()
-   build (size - 1)
+build initSize = go initSize
+   where
+      go 0 = do
+         verboseProgressEnd
+         use dug
+
+      go size = do
+         inflate
+         b <- tryDeflate
+         debugIf b flatDeflateSteps (+1)
+         d <- use dug
+         buf <- use buffer
+         alive <- use living
+         if size `mod` 100 == 0 then do
+            verboseProgress (initSize - size) initSize
+            debugTrace $ "Step "
+               ++ "("
+               ++ "remaining=" ++ show size
+               ++ ", size=" ++ show (D.size d)
+               ++ ", #buf=" ++ show (length buf)
+               ++ ", #alive=" ++ show (St.size alive)
+               ++ ")"
+         else return ()
+         go (size - 1)
 
 pad :: Int -> String
 pad i = replicate (3 - length unpad) '0' ++ unpad

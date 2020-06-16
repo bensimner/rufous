@@ -41,7 +41,7 @@ makeRow s ar = [show (length (ar ^. Agg.aggResults))]
                ++ [ppFloat (S.pof s p)]
                ++ [ppNDTime ((tinfo^.R.times) M.! i) | i <- s^.S.implementations]
    where p = r ^. R.resultProfile
-         Right tinfo = r ^. R.resultTimes
+         R.DUGEvalTimes tinfo = r ^. R.resultAvgTimes
          r = ar ^. Agg.aggResult
 
 getWeight :: P.Profile -> String -> String

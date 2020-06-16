@@ -25,7 +25,6 @@ aggregateKMeans opts rs = do
       let merged = map mergeGroup groups
       return merged
 
-
 mergeGroup :: [R.Result] -> AggregatedResult
 mergeGroup rs = AggregatedResult rs r'
    where

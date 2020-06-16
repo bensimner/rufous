@@ -52,18 +52,26 @@ data TimingInfo =
    deriving (Show)
 makeLenses ''TimingInfo
 
-
+-- | A Failed execution is tagged with a message
 data ResultFailure =
       ResultFail String
    deriving (Show)
 
--- |  A 'Result' is the information from a single DUG run.
+-- | Evaluation information from a single run of a particular DUG
+data DUGTimeInfo =
+     DUGEvalFail ResultFailure
+   | DUGEvalTimes TimingInfo
+   deriving (Show)
+makeLenses ''DUGTimeInfo
+
+-- | Information from many executions of the same DUG
 data Result =
    Result
       { _resultDUG :: D.DUG
       , _resultProfile :: P.Profile
       , _resultOpCounts :: M.Map String Int
-      , _resultTimes :: Either ResultFailure TimingInfo
+      , _resultAvgTimes :: DUGTimeInfo
+      , _resultAllTimings :: [DUGTimeInfo]
       }
    deriving (Show)
 makeLenses ''Result

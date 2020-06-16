@@ -10,6 +10,9 @@ module Test.Rufous.Options
    -- | Aggreagtors
    , KMeansOptions(..)
 
+   -- | Normalization of Rufous options
+   , normalize
+
    -- | Mutators over Options
    , debugFlag
    , debugOpt
@@ -20,15 +23,12 @@ module Test.Rufous.Options
    , kmeansArgs
    , aggregationArgs
 
-
    -- | Option-dependent functions
    , doIf
-   , verboseTrace
-   , debugTrace
+   , doIfElse
 
-   -- | Manual trace/debug actions
-   , traceLn
-   , debugLn
+   -- | Options flags
+   , verboseOnly
    )
 where
 
@@ -45,12 +45,38 @@ data RufousOptions =
       , dugs :: [D.DUG]
       , averageDugSizes :: [Int]
       , numberOfTests :: Int
+      , numberOfRuns :: Int
+
+      -- | Logging output
+      -- Rufous has 4 output types:
+      --  OUTPUT, TRACE, LOG, DEBUG
+      --  logLevel defines which are visible:
+      --  0 - OUTPUT
+      --  1 - OUTPUT, TRACE
+      --  2 - OUTPUT, TRACE, LOG
+      --  3 - OUTPUT, TRACE, LOG, DEBUG
+      --
+      -- verbose=True sets logLevel>=1
+      -- debug=True sets logLevel>=3
+      , verbose :: Bool
       , debug :: Bool
+      , logLevel :: Int
+
+      -- | If logLevel >= 3 then Rufous can output
+      -- additional information about the DUGs as it generates them
       , debugOptions :: DebugOptions
+
+      -- | Unused
       , genOptions :: GenOptions
+
+      -- | After running the DUGs and collecting timing info
+      -- Rufous will aggregate the results into a single aggregated result
+      -- e.g. using KMeans
+      --
+      -- aggregator selects the aggregation method
+      -- aggregationOptions sets generic and aggregator-specific options
       , aggregationOptions :: AggregationOptions
       , aggregator :: AggregatorType
-      , verbose :: Bool
       }
    deriving (Show)
 
@@ -73,6 +99,30 @@ debugOpt f x r = if debug r then f (debugOptions r) else x
 debugFlag :: (DebugOptions -> Bool) -> RufousOptions -> Bool
 debugFlag f r = debugOpt f False r
 
+verboseOnly :: RufousOptions -> Bool
+verboseOnly opts = verbose opts && not (debug opts)
+
+{- Option-dependent Tracing Functions -}
+doIf :: (RufousOptions -> Bool) -> RufousOptions -> IO () -> IO ()
+doIf f opts a | f opts = a
+doIf _ _ _ = return ()
+
+doIfElse :: (RufousOptions -> Bool) -> RufousOptions -> IO () -> IO () -> IO ()
+doIfElse f opts a _ | f opts = a
+doIfElse _ _ _ b = b
+
+normalize :: RufousOptions -> RufousOptions
+normalize opt = opt{logLevel=newLogLevel}
+   where
+      newLogLevel =
+         if debug opt
+         then 3
+         else
+            if verbose opt
+            then 1
+            else 0
+
+
 {- Default Options -}
 genArgs :: GenOptions
 genArgs = GenOptions
@@ -94,28 +144,12 @@ args =
       , dugs=[]
       , averageDugSizes=[10, 100, 1000, 5000]
       , numberOfTests=100
+      , numberOfRuns=10
+      , verbose=False
       , debug=False
+      , logLevel=0
       , debugOptions=debugArgs
       , genOptions=genArgs
       , aggregator=KMeans
       , aggregationOptions=aggregationArgs
-      , verbose=False
       }
-
-
-{- Option-dependent Tracing Functions -}
-doIf :: (RufousOptions -> Bool) -> RufousOptions -> IO () -> IO ()
-doIf f opts a | f opts = a
-doIf _ _ _ = return ()
-
-verboseTrace :: RufousOptions -> String -> IO ()
-verboseTrace opts msg = doIf verbose opts (traceLn msg)
-
-debugTrace :: RufousOptions -> String -> IO ()
-debugTrace opts msg = doIf debug opts (debugLn msg)
-
-traceLn :: String -> IO ()
-traceLn s = mapM_ putStrLn (map ("[TRACE] " ++) (lines s))
-
-debugLn :: String -> IO ()
-debugLn s = mapM_ putStrLn (map ("[DEBUG] " ++) (lines s))

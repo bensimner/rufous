@@ -1,5 +1,6 @@
 module Test.Rufous.Internal.Evaluation.Results
    ( mergeResults
+   , mergeDUGTimeInfos
    , splitResultFailures
    , splitResults
    )
@@ -19,15 +20,16 @@ mergeResults r1 r2 =
       { _resultDUG=(r1^.resultDUG)
       , _resultProfile=mergeProfiles (r1^.resultProfile) (r2^.resultProfile)
       , _resultOpCounts=mergeMaps (r1^.resultOpCounts) (r2^.resultOpCounts)
-      , _resultTimes=mergeResultTimes (r1^.resultTimes) (r2^.resultTimes)
+      , _resultAllTimings=(r1^.resultAllTimings) ++ (r2^.resultAllTimings)
+      , _resultAvgTimes=mergeDUGTimeInfos (r1^.resultAvgTimes) (r2^.resultAvgTimes)
       }
 
-mergeResultTimes :: Either b TimingInfo -> Either b TimingInfo -> Either b TimingInfo
-mergeResultTimes rt1 rt2 =
-   case (rt1,rt2) of
-      (Right r1, Right r2) -> Right $ mergeTimes r1 r2
-      (Right _, Left x) -> Left x
-      (Left x, _) -> Left x
+mergeDUGTimeInfos :: DUGTimeInfo -> DUGTimeInfo -> DUGTimeInfo
+mergeDUGTimeInfos t1 t2 =
+   case (t1, t2) of
+      (DUGEvalTimes r1, DUGEvalTimes r2) -> DUGEvalTimes $ mergeTimes r1 r2
+      (DUGEvalTimes _, f) -> f
+      (f, _) -> f
 
 mergeTimes :: TimingInfo -> TimingInfo -> TimingInfo
 mergeTimes t1 t2 =
@@ -77,13 +79,13 @@ splitResultFailures (Right t : rs) =
 splitResults :: [Result] -> Either ResultFailure [Result]
 splitResults [] = Left $ ResultFail "Cannot split Results: No Results?"
 splitResults [r] =
-   case r^.resultTimes of
-      Left f -> Left f
-      Right _ -> Right [r]
+   case r^.resultAvgTimes of
+      DUGEvalFail f -> Left f
+      _ -> Right [r]
 splitResults (r:rs) =
-   case r^.resultTimes of
-      Left f -> Left f
-      Right _ ->
+   case r^.resultAvgTimes of
+      DUGEvalFail f -> Left f
+      _ ->
          case splitResults rs of
             Left f -> Left f
             Right xs -> Right (r:xs)
