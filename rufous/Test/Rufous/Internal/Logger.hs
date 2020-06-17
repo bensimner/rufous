@@ -30,8 +30,6 @@ import qualified Data.IORef as Ref
 import Test.Rufous.Options hiding (debug)
 import qualified Test.Rufous.Options as Opt
 
-import qualified Test.Rufous.Internal.Utils as U
-
 {- Option state -}
 
 -- | a global IO ref used *only* for debug/trace/log convenience functions!
@@ -76,13 +74,13 @@ debugTrace :: RufousOptions -> String -> IO ()
 debugTrace opts msg = doIf Opt.debug opts (debugLn msg)
 
 traceLn :: String -> IO ()
-traceLn s = mapM_ (hPutStrLn stderr) (map ("[ INFO] " ++) (lines s))
+traceLn s = last s `seq` mapM_ (hPutStrLn stderr) (map ("[ INFO] " ++) (lines s))
 
 logLn :: String -> IO ()
-logLn s = mapM_ (hPutStrLn stderr) (map ("[  LOG] " ++) (lines s))
+logLn s = last s `seq` mapM_ (hPutStrLn stderr) (map ("[  LOG] " ++) (lines s))
 
 debugLn :: String -> IO ()
-debugLn s = mapM_ (hPutStrLn stderr) (map ("[DEBUG] " ++) (lines s))
+debugLn s = last s `seq` mapM_ (hPutStrLn stderr) (map ("[DEBUG] " ++) (lines s))
 
 {- Progress Bar -}
 _progressBar :: Ref.IORef (Int, Int, String)
