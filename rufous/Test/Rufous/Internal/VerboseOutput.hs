@@ -27,8 +27,8 @@ logTimingResults :: R.Result -> IO ()
 logTimingResults r = do
         Log.info  $ "DUG #" ++ show i ++ " (" ++ name ++ "):"
         Log.info  $ "  ran " ++ show n ++ " times"
-        Log.debug $ show (map timingOut times)
-        Log.info $ timingOut (r^.R.resultAvgTimes)
+        Log.debug $ "  allTimes: " ++ show (map timingOut times)
+        Log.info  $ "  avg time: " ++ timingOut (r^.R.resultAvgTimes)
     where
         d = r^.R.resultDUG
         info = fromJust $ d ^. D.ginfo
@@ -39,4 +39,4 @@ logTimingResults r = do
         timingOut t =
             case t of
                 R.DUGEvalFail _ -> " Evaluation Failed."
-                R.DUGEvalTimes t' -> " Times: [" ++ intercalate ", " [show impl ++ "=" ++ show time | (impl, time) <- toList (t'^.R.times)] ++ "]"
+                R.DUGEvalTimes t' -> "[" ++ intercalate ", " [show impl ++ "=" ++ show time | (impl, time) <- toList (t'^.R.times)] ++ "]"
