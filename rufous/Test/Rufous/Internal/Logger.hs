@@ -133,4 +133,5 @@ endProgress = doIfIO ifShowProgress $ do
     Just (_, maxi, msg) <- Ref.readIORef _progressBar
     Ref.writeIORef _progressBar (Just (maxi, maxi, msg))
     refreshProgress
+    Ref.writeIORef _progressBar Nothing
     hPutStrLn stderr ""
