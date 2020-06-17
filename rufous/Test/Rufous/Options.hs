@@ -112,16 +112,22 @@ doIfElse f opts a _ | f opts = a
 doIfElse _ _ _ b = b
 
 normalize :: RufousOptions -> RufousOptions
-normalize opt = opt{logLevel=newLogLevel}
+normalize opt = opt{logLevel=newLogLevel, debug=enableDebug, verbose=enableVerbose}
    where
       newLogLevel =
-         if debug opt
-         then 3
-         else
-            if verbose opt
-            then 1
-            else 0
-
+         case logLevel opt of
+            i | i == -1 ->
+               if debug opt
+               then 3
+               else
+                  if verbose opt
+                  then 1
+                  else 0
+            i | i <= 3 ->
+               logLevel opt
+            _ -> error "Rufous: unsupported logLevel:  only 0 <= logLevel <= 3  supported."
+      enableDebug = newLogLevel >= 3
+      enableVerbose= newLogLevel >= 1
 
 {- Default Options -}
 genArgs :: GenOptions
@@ -147,7 +153,7 @@ args =
       , numberOfRuns=10
       , verbose=False
       , debug=False
-      , logLevel=0
+      , logLevel=(-1)
       , debugOptions=debugArgs
       , genOptions=genArgs
       , aggregator=KMeans
