@@ -106,13 +106,13 @@ runRufousOnDugs opts s dugs = do
    let numObservers = sum [length $ D.observers d | d <- dugs]
 
    Log.info "Evaluating DUGs:"
-   Log.initProgressWithMsg numObservers ("0/" ++ show n ++ " DUGs")
+   Log.initProgressWithMsg numObservers ("Evaluated 0/" ++ show n ++ " DUGs")
    results <- sequence $ do
       (i, d) <- zip [1..] dugs
       return $ do
          Log.debug $ "Evaluating ... " ++ show i ++ "/" ++ show n
          r <- runRufousOnDug opts s nul impls d
-         Log.updateProgressMsg (show i ++ "/" ++ show n ++ " DUGs")
+         Log.updateProgressMsg ("Evaluated " ++ show i ++ "/" ++ show n ++ " DUGs")
          return r
    Log.endProgress
 
@@ -134,13 +134,13 @@ runRufousOnProfiles opts s profiles = do
    let size = sum [p^.P.size | p <- profiles]
 
    Log.info "Generating DUGs:"
-   Log.initProgressWithMsg size ("0/" ++ show ndugs ++ " DUGs")
+   Log.initProgressWithMsg size ("Generated 0/" ++ show ndugs ++ " DUGs")
    dugs <- sequence $ do
       (i, !p) <- (zip [1..] profiles :: [(Integer,P.Profile)])
       return $ do
          Log.debug  $ "Generating ... " ++ show i ++ "/" ++ show (length profiles)
          !g <- G.generateDUG opts s p
-         Log.updateProgressMsg (show i ++ "/" ++ show ndugs ++ " DUGs")
+         Log.updateProgressMsg ("Generated " ++ show i ++ "/" ++ show ndugs ++ " DUGs")
          let g' = g & D.ginfo . _Just . D.idx .~ i
          return g'
 
