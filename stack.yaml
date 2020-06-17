@@ -3,3 +3,7 @@ resolver: lts-15.0
 packages:
 - rufous
 - rufous-tests
+
+extra-deps:
+- 'HMap-1.3.0'
+- 'Useful-0.0.6'
