@@ -14,6 +14,8 @@ import qualified Test.Rufous.DUG as D
 import Test.Rufous.Internal.Generate.Types
 import Test.Rufous.Internal.Generate.Core
 
+import Test.Rufous.Internal.Logger as Log
+
 precheck :: Opt.RufousOptions -> S.Signature -> P.Profile -> IO ()
 precheck _ s _ = do
    case s^.S.shadowImpl of
@@ -25,6 +27,7 @@ precheck _ s _ = do
 -- | Generates a 'DUG' which conforms to a given Profile.
 generateDUG :: Opt.RufousOptions -> S.Signature -> P.Profile -> IO D.DUG
 generateDUG o s p = do
+      Log.debug $ "generating of size " ++ show (p^.P.size)
       precheck o s p
       name <- freshName
       let size = p^.P.size

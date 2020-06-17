@@ -86,12 +86,10 @@ runRufousOnDug ::
    -> S.Signature
    -> S.Implementation
    -> [S.Implementation]
-   -> Int
-   -> (Int, D.DUG)
+   -> D.DUG
    -> IO R.Result
-runRufousOnDug opts s nul impls n (i, dug) = do
+runRufousOnDug opts s nul impls dug = do
    !r <- R.run s dug nul impls (Opt.numberOfRuns opts)
-   Log.info $ "Evaluating ... " ++ show i ++ "/" ++ show n
    return r
 
 -- | runs Rufous on a set of DUGs to get timing info for each of them
@@ -103,7 +101,21 @@ runRufousOnDugs opts s dugs = do
    let nul = s ^. S.nullImpl
    let impls = s ^. S.implementations
    Log.info $ "Found Null Implementation: " ++ show nul
-   results <- mapM (runRufousOnDug opts s nul impls (length dugs)) (zip [1..] dugs)
+
+   let n = length dugs
+   let numObservers = sum [length $ D.observers d | d <- dugs]
+
+   Log.info "Evaluating DUGs:"
+   Log.initProgressWithMsg numObservers ("0/" ++ show n ++ " DUGs")
+   results <- sequence $ do
+      (i, d) <- zip [1..] dugs
+      return $ do
+         Log.debug $ "Evaluating ... " ++ show i ++ "/" ++ show n
+         r <- runRufousOnDug opts s nul impls d
+         Log.updateProgressMsg (show i ++ "/" ++ show n ++ " DUGs")
+         return r
+   Log.endProgress
+
    case R.splitResults results of
       Left (R.ResultFail f) -> do
          putStrLn "** Failure to Evaluate DUG:"
@@ -118,15 +130,21 @@ runRufousOnDugs opts s dugs = do
 -- | runs Rufous on a set of Profile by generating DUGs
 runRufousOnProfiles :: Opt.RufousOptions -> S.Signature -> [P.Profile] -> IO ()
 runRufousOnProfiles opts s profiles = do
-   dugs <- sequence $ do
-               (i, !p) <- (zip [1..] profiles :: [(Integer,P.Profile)])
-               return $ do
-                  Log.info  $ "Generating ... " ++ show i ++ "/" ++ show (length profiles)
-                  Log.debug $ "generating of size " ++ show (p^.P.size)
-                  !g <- G.generateDUG opts s p
-                  let g' = g & D.ginfo . _Just . D.idx .~ i
-                  return g'
+   let ndugs = length profiles
+   let size = sum [p^.P.size | p <- profiles]
 
+   Log.info "Generating DUGs:"
+   Log.initProgressWithMsg size ("0/" ++ show ndugs ++ " DUGs")
+   dugs <- sequence $ do
+      (i, !p) <- (zip [1..] profiles :: [(Integer,P.Profile)])
+      return $ do
+         Log.debug  $ "Generating ... " ++ show i ++ "/" ++ show (length profiles)
+         !g <- G.generateDUG opts s p
+         Log.updateProgressMsg (show i ++ "/" ++ show ndugs ++ " DUGs")
+         let g' = g & D.ginfo . _Just . D.idx .~ i
+         return g'
+
+   Log.endProgress
    Log.info $ "Generated " ++ show (length dugs) ++ " random DUGs from those profiles"
 
    Opt.doIf Opt.debug opts $ do

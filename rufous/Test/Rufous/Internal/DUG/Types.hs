@@ -75,3 +75,15 @@ pushNew o dargs dyn dug =
 
 size :: DUG -> Int
 size d = M.size $ d^.operations
+
+observers :: DUG -> [Node]
+observers d = filter isObserver $ d ^. operations ^.. traverse
+   where isObserver n = n^.operation^.S.opCategory == S.Observer
+
+mutators :: DUG -> [Node]
+mutators d = filter isMutator $ d ^. operations ^.. traverse
+   where isMutator n = n^.operation^.S.opCategory == S.Mutator
+
+generators :: DUG -> [Node]
+generators d = filter isGenerator $ d ^. operations ^.. traverse
+   where isGenerator n = n^.operation^.S.opCategory == S.Generator

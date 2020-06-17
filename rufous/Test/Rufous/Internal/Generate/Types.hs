@@ -124,19 +124,23 @@ debugTrace msg = do
    () <- return $ unsafePerformIO $ Log.debug msg
    return ()
 
-verboseProgress :: Int -> Int -> GenState ()
-verboseProgress i maxi = do
+
+verboseProgressFn :: IO () -> GenState ()
+verboseProgressFn f = do
    opts <- use opt
    () <- if Opt.verbose opts
-            then return $ unsafePerformIO $ Log.updateProgress i maxi
+            then return $ unsafePerformIO $ f
             else return ()
    return ()
 
+verboseProgressStart :: Int -> String -> GenState ()
+verboseProgressStart i m = verboseProgressFn $ Log.initProgressWithMsg i m
+
+verboseProgressMsg :: String -> GenState ()
+verboseProgressMsg m = verboseProgressFn $ Log.updateProgressMsg m
+
+verboseProgress :: Int -> GenState ()
+verboseProgress di = verboseProgressFn $ Log.updateProgress di
+
 verboseProgressEnd :: GenState ()
-verboseProgressEnd = do
-   verboseProgress 100 100
-   opts <- use opt
-   () <- if Opt.verboseOnly opts
-            then return $ unsafePerformIO $ Log.endProgress
-            else return ()
-   return ()
+verboseProgressEnd = verboseProgressFn $ Log.endProgress

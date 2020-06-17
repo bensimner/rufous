@@ -27,8 +27,7 @@ import qualified Test.Rufous.Internal.Logger as Log
 -- and return the new annotated DUG with the timing info
 run :: S.Signature -> D.DUG -> S.Implementation -> [S.Implementation] -> Int -> IO Result
 run s d nullImpl impls i = do
-   !results <- mapM (\j -> Log.doIfIO Opt.verbose (Log.updateProgress j i) >> runOnDUG s d nullImpl impls) [1..i]
-   Log.doIfIO Opt.verbose Log.endProgress
+   !results <- mapM (\_ -> runOnDUG s d nullImpl impls) [1..i]
    let extractedProfile = D.extractProfile s d
    let opCounts = M.empty
    return $ Result d extractedProfile opCounts (foldl1 mergeDUGTimeInfos results) results
@@ -122,10 +121,8 @@ runOn s d impl = do
          RunExcept e -> error $  "Rufous: internal: " ++ show e
 
    where
-      observers :: [D.Node]
-      observers = filter isObserver $ runDUG ^. D.operations ^.. traverse
       runDUG = buildImplDUG s impl d
-      isObserver n = n^.D.operation^.S.opCategory == S.Observer
+      observers = D.observers runDUG
       observed = sequence $ map observe observers
       observe :: D.Node -> IO (Maybe RunResult)
       observe n = do

@@ -10,7 +10,10 @@ module Test.Rufous.Internal.Logger
     , doIfIO
 
     -- a mini progress bar
+    , initProgress
+    , initProgressWithMsg
     , updateProgress
+    , updateProgressMsg
     , endProgress
 
     -- | initial update of global IORef (see below)
@@ -82,19 +85,43 @@ debugLn :: String -> IO ()
 debugLn s = mapM_ (hPutStrLn stderr) (map ("[DEBUG] " ++) (lines s))
 
 {- Progress Bar -}
-updateProgress :: Int -> Int -> IO ()
-updateProgress i maxi = do
-        hPutStr stderr $ "\r[" ++ replicate len '#' ++ replicate (20-len) ' ' ++ "] " ++ show percInt ++ "%"
-        hFlush stderr
-    where
-        perc :: Float
-        perc = fromIntegral i / fromIntegral maxi
+_progressBar :: Ref.IORef (Int, Int, String)
+{-# NOINLINE _progressBar #-}
+_progressBar = unsafePerformIO $ Ref.newIORef (0,0,"")
 
-        percInt :: Int
-        percInt = round $ 100 * perc
+initProgress :: Int -> IO ()
+initProgress n =
+    Ref.writeIORef _progressBar (0, n, "")
 
-        len :: Int
-        len = round $ 20 * perc
+initProgressWithMsg :: Int -> String -> IO ()
+initProgressWithMsg n msg = do
+    Ref.writeIORef _progressBar (0, n, msg)
+
+refreshProgress :: IO ()
+refreshProgress = do
+    (i, maxi, msg) <- Ref.readIORef _progressBar
+    let perc :: Float; perc = fromIntegral i / fromIntegral maxi
+    let percInt :: Int; percInt = round $ 100 * perc
+    let len = round $ 20 * perc
+    hPutStr stderr $ "\r[" ++ replicate len '#' ++ replicate (20-len) ' ' ++ "] " ++ show percInt ++ "% " ++ msg
+    hFlush stderr
+
+updateProgress :: Int -> IO ()
+updateProgress di = do
+    (c, maxi, msg) <- Ref.readIORef _progressBar
+    let i = c+di
+    Ref.writeIORef _progressBar (i, maxi, msg)
+    refreshProgress
+
+updateProgressMsg :: String -> IO ()
+updateProgressMsg m = do
+    (c, maxi, _) <- Ref.readIORef _progressBar
+    Ref.writeIORef _progressBar (c, maxi, m)
+    refreshProgress
 
 endProgress :: IO ()
-endProgress = hPutStrLn stderr ""
+endProgress = do
+    (_, maxi, msg) <- Ref.readIORef _progressBar
+    Ref.writeIORef _progressBar (maxi, maxi, msg)
+    refreshProgress
+    hPutStrLn stderr ""

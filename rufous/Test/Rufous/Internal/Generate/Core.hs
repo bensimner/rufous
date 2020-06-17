@@ -26,7 +26,7 @@ build :: Int -> GenState D.DUG
 build initSize = go initSize
    where
       go 0 = do
-         verboseProgressEnd
+         verboseProgress (initSize `mod` 100)
          use dug
 
       go size = do
@@ -37,7 +37,7 @@ build initSize = go initSize
          buf <- use buffer
          alive <- use living
          if size `mod` 100 == 0 then do
-            verboseProgress (initSize - size) initSize
+            verboseProgress 100
             debugTrace $ "Step "
                ++ "("
                ++ "remaining=" ++ show size

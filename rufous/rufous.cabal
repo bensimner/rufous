@@ -53,6 +53,7 @@ library
                        , Test.Rufous.Internal.Signature.SignatureType
                        , Test.Rufous.Internal.Utils
                        , Test.Rufous.Internal.Table
+                       , Test.Rufous.Internal.Logger
                        , Test.Rufous.Internal.VerboseOutput
   build-depends:       base
                        , random
