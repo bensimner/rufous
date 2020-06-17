@@ -83,55 +83,63 @@ debugLn s = last s `seq` mapM_ debugPutLn (map ("[DEBUG] " ++) (lines s))
 
 debugPutLn :: String -> IO ()
 debugPutLn s = do
-    hPutStr stderr ("\r" ++ s ++ "\n")
+    hPutStr stderr ("\r" ++ s)
+    pg <- Ref.readIORef _progressBar
+    case pg of
+        Just (_, _, _, k) -> hPutStr stderr (replicate (k - length s) ' ')
+        Nothing -> return ()
+    hPutStr stderr "\n"
     refreshProgress
 
 {- Progress Bar -}
 ifShowProgress :: Opt.RufousOptions -> Bool
 ifShowProgress = Opt.optFlag Opt.verbose Opt.showProgressBars
 
-_progressBar :: Ref.IORef (Maybe (Int, Int, String))
+_progressBar :: Ref.IORef (Maybe (Int, Int, String, Int))
 {-# NOINLINE _progressBar #-}
 _progressBar = unsafePerformIO $ Ref.newIORef Nothing
 
 initProgress :: Int -> IO ()
 initProgress n = doIfIO ifShowProgress $ do
-    Ref.writeIORef _progressBar (Just (0, n, ""))
+    Ref.writeIORef _progressBar (Just (0, n, "", 0))
 
 initProgressWithMsg :: Int -> String -> IO ()
 initProgressWithMsg n msg = doIfIO ifShowProgress $ do
-    Ref.writeIORef _progressBar (Just (0, n, msg))
+    Ref.writeIORef _progressBar (Just (0, n, msg, 0))
 
 refreshProgress :: IO ()
 refreshProgress = doIfIO ifShowProgress $ do
     pg <- Ref.readIORef _progressBar
     case pg of
-        Just (i, maxi, msg) -> do
+        Just (i, maxi, msg, k) -> do
             let perc :: Float; perc = fromIntegral i / fromIntegral maxi
             let percInt :: Int; percInt = round $ 100 * perc
             let len = round $ 20 * perc
-            hPutStr stderr $ "\r[" ++ replicate len '#' ++ replicate (20-len) ' ' ++ "] " ++ show percInt ++ "% " ++ msg
+            let progress = replicate len '#' ++ replicate (20-len) ' '
+            let bar = "[" ++ progress ++ "] " ++ show percInt ++ "% " ++ msg
+            hPutStr stderr $ "\r" ++ bar ++ replicate (k - length bar) ' '
             hFlush stderr
+            Ref.writeIORef _progressBar (Just (i, maxi, msg, length bar))
             return ()
         Nothing -> return ()
 
 updateProgress :: Int -> IO ()
 updateProgress di = doIfIO ifShowProgress $ do
-    Just (c, maxi, msg) <- Ref.readIORef _progressBar
+    Just (c, maxi, msg, k) <- Ref.readIORef _progressBar
     let i = c+di
-    Ref.writeIORef _progressBar (Just (i, maxi, msg))
+    Ref.writeIORef _progressBar (Just (i, maxi, msg, k))
     refreshProgress
 
 updateProgressMsg :: String -> IO ()
 updateProgressMsg m = doIfIO ifShowProgress $ do
-    Just (c, maxi, _) <- Ref.readIORef _progressBar
-    Ref.writeIORef _progressBar (Just (c, maxi, m))
+    Just (c, maxi, _, k) <- Ref.readIORef _progressBar
+    Ref.writeIORef _progressBar (Just (c, maxi, m, k))
     refreshProgress
 
 endProgress :: IO ()
 endProgress = doIfIO ifShowProgress $ do
-    Just (_, maxi, msg) <- Ref.readIORef _progressBar
-    Ref.writeIORef _progressBar (Just (maxi, maxi, msg))
+    Just (_, maxi, msg, k) <- Ref.readIORef _progressBar
+    Ref.writeIORef _progressBar (Just (maxi, maxi, msg, k))
     refreshProgress
     Ref.writeIORef _progressBar Nothing
     hPutStrLn stderr ""

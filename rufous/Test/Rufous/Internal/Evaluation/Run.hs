@@ -15,7 +15,6 @@ import Data.Maybe (fromJust)
 
 import qualified Test.Rufous.Signature as S
 import qualified Test.Rufous.DUG as D
-import qualified Test.Rufous.Options as Opt
 import qualified Test.Rufous.Internal.DUG.HsPrinter as DP
 
 import Test.Rufous.Internal.Evaluation.Types
@@ -49,7 +48,7 @@ runOnDUG s d nullImpl impls = do
             Left f -> failOut f
             Right implTs -> do
                let tinfo = TInfo nullT (M.fromList (zip impls implTs))
-               Log.debug $ "t " ++ d^.D.name ++ ", impl times =" ++ show (zip impls implTs)
+               Log.debug $ "tinfo " ++ d^.D.name ++ ", impl times =" ++ show (zip impls implTs)
                return $ DUGEvalTimes tinfo
    where
       failOut f = return $ DUGEvalFail f
