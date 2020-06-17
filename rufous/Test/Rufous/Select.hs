@@ -26,7 +26,7 @@ makeTable :: S.Signature -> [Agg.AggregatedResult] -> T.Table String
 makeTable s rs = T.Table (makeHeader s) (map (\r -> makeRow s r) rs)
 
 makeHeader :: S.Signature -> [String]
-makeHeader s = ["#tests"]
+makeHeader s = ["#dugs"]
                ++ ["#versions"]
                ++ [show opName ++ " weight" | opName <- M.keys (s ^. S.operations)]
                ++ ["mortality", "pmf", "pof"]
