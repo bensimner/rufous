@@ -56,11 +56,20 @@ data DebugInfo =
       , _deflateSteps :: Int             -- the total number of deflation steps
       , _flatDeflateSteps :: Int         -- the number of deflate steps which failed to deflate anything.
       , _noLivingNodes :: Int            -- the number of times a BuffereOperation couldn't be satisfied because there were no living nodes
-      , _inflatedOps :: M.Map String Int -- the number of times a BuffereOperation couldn't be satisfied because there were no living nodes
+      , _inflatedOps :: M.Map String Int -- the number of times each operation was buffered
       , _deadNodes :: Int                -- a count of the number of nodes that have died so far
       }
    deriving (Show)
 makeLenses ''DebugInfo
+
+prettyDebugInfo :: DebugInfo -> String
+prettyDebugInfo dbg =
+     "DebugInfo(failedGuards=" ++ show (dbg^.failedGuards) ++ ","
+   ++          "diedOfOldAge=" ++ show (dbg^.diedOfOldAge) ++ ","
+   ++          "deflateSteps=" ++ show (dbg^.deflateSteps) ++ ","
+   ++          "noLivingNodes=" ++ show (dbg^.noLivingNodes) ++ ","
+   ++          "inflatedOps=" ++ show (dbg^.inflatedOps) ++ ","
+   ++ ")"
 
 -- | During generation there is a lot of state that is kept:
 --    - the current partially built DUG
@@ -123,7 +132,6 @@ debugTrace :: String -> GenState ()
 debugTrace msg = do
    () <- return $ unsafePerformIO $ Log.debug msg
    return ()
-
 
 verboseProgressFn :: IO () -> GenState ()
 verboseProgressFn f = do

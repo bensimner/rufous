@@ -36,6 +36,7 @@ build initSize = go initSize
          d <- use dug
          buf <- use buffer
          alive <- use living
+         debug <- use dbg
          if size `mod` 100 == 0 then do
             verboseProgress 100
             debugTrace $ "Step "
@@ -44,6 +45,7 @@ build initSize = go initSize
                ++ ", size=" ++ show (D.size d)
                ++ ", #buf=" ++ show (length buf)
                ++ ", #alive=" ++ show (St.size alive)
+               ++ ", dbg=" ++ prettyDebugInfo debug
                ++ ")"
          else return ()
          go (size - 1)

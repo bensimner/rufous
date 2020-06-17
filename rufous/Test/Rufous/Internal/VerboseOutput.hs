@@ -26,12 +26,16 @@ logGeneratedDUG d = do
 logTimingResults :: R.Result -> IO ()
 logTimingResults r = do
         Log.info  $ "DUG #" ++ show i ++ " (" ++ name ++ "):"
+        Log.debug $ "     target profile: " ++ show profile
+        Log.debug $ "  generated profile: " ++ show genProfile
         Log.info  $ "  ran " ++ show n ++ " times"
         Log.debug $ "  allTimes: " ++ show (map timingOut times)
         Log.info  $ "  avg time: " ++ timingOut (r^.R.resultAvgTimes)
     where
         d = r^.R.resultDUG
         info = fromJust $ d ^. D.ginfo
+        profile = info ^. D.targetProfile
+        genProfile = r^.R.resultProfile
         i = info ^. D.idx
         name = d ^. D.name
         times = r ^. R.resultAllTimings
