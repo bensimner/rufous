@@ -1,7 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 module Test.Rufous.Options
    ( RufousOptions(..)
-   , DebugOptions(..)
+   , LogOptions(..)
 
    -- | Aggregation Options
    , AggregatorType(..)
@@ -14,11 +14,11 @@ module Test.Rufous.Options
    , normalize
 
    -- | Mutators over Options
-   , debugFlag
-   , debugOpt
+   , optFlag
+   , optValue
 
    -- | default option sets
-   , debugArgs
+   , logArgs
    , args
    , kmeansArgs
    , aggregationArgs
@@ -62,9 +62,10 @@ data RufousOptions =
       , debug :: Bool
       , logLevel :: Int
 
-      -- | If logLevel >= 3 then Rufous can output
-      -- additional information about the DUGs as it generates them
-      , debugOptions :: DebugOptions
+      -- | Rufous can also output additional information
+      -- about the DUGs as it generates them
+      -- e.g. graphviz for each DUG,  progress bars etc
+      , logOptions :: LogOptions
 
       -- | Unused
       , genOptions :: GenOptions
@@ -80,12 +81,13 @@ data RufousOptions =
       }
    deriving (Show)
 
-data DebugOptions =
-   DebugOptions {
+data LogOptions =
+   LogOptions {
         dumpDir :: String
       , dumpDugs :: Bool
       , dumpPhaseTiming :: Bool
       , showNullTimes :: Bool
+      , showProgressBars :: Bool
    }
    deriving (Show)
 
@@ -93,11 +95,11 @@ data GenOptions =
    GenOptions
    deriving (Show)
 
-debugOpt :: (DebugOptions -> a) -> a -> RufousOptions -> a
-debugOpt f x r = if debug r then f (debugOptions r) else x
+optValue :: (RufousOptions -> Bool) -> (LogOptions -> a) -> a -> RufousOptions -> a
+optValue f g x r = if f r then g (logOptions r) else x
 
-debugFlag :: (DebugOptions -> Bool) -> RufousOptions -> Bool
-debugFlag f r = debugOpt f False r
+optFlag :: (RufousOptions -> Bool) -> (LogOptions -> Bool) -> RufousOptions -> Bool
+optFlag f g r = if f r then g (logOptions r) else False
 
 verboseOnly :: RufousOptions -> Bool
 verboseOnly opts = verbose opts && not (debug opts)
@@ -133,13 +135,14 @@ normalize opt = opt{logLevel=newLogLevel, debug=enableDebug, verbose=enableVerbo
 genArgs :: GenOptions
 genArgs = GenOptions
 
-debugArgs :: DebugOptions
-debugArgs =
-   DebugOptions
+logArgs :: LogOptions
+logArgs =
+   LogOptions
       { dumpDugs=False
       , dumpDir="./"
       , dumpPhaseTiming=True
       , showNullTimes=True
+      , showProgressBars=True
       }
 
 args :: RufousOptions
@@ -154,7 +157,7 @@ args =
       , verbose=False
       , debug=False
       , logLevel=(-1)
-      , debugOptions=debugArgs
+      , logOptions=logArgs
       , genOptions=genArgs
       , aggregator=KMeans
       , aggregationOptions=aggregationArgs

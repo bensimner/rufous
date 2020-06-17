@@ -4,9 +4,9 @@ module Test.Rufous
    -- Main API
      mainWith
    , Opt.RufousOptions(..)
-   , Opt.DebugOptions(..)
+   , Opt.LogOptions(..)
    , Opt.args
-   , Opt.debugArgs
+   , Opt.logArgs
 
    , guardFailed
    , shadowUndefined
@@ -150,7 +150,7 @@ runRufousOnProfiles opts s profiles = do
    Opt.doIf Opt.debug opts $ do
       Log.debug $ "These DUGs have the following extracted profiles:"
       mapM_ (print . D.extractProfile s) dugs
-      Opt.doIf (Opt.dumpDugs . Opt.debugOptions) opts $ mapM_ (\d -> D.printDUGtoFile ("output/" ++ d^.D.name) d) dugs
+      Opt.doIf (Opt.dumpDugs . Opt.logOptions) opts $ mapM_ (\d -> D.printDUGtoFile ("output/" ++ d^.D.name) d) dugs
 
    case Opt.dugs opts of
       [] -> runRufousOnDugs opts s dugs

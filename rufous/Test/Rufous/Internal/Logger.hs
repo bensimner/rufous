@@ -87,20 +87,23 @@ debugPutLn s = do
     refreshProgress
 
 {- Progress Bar -}
+ifShowProgress :: Opt.RufousOptions -> Bool
+ifShowProgress = Opt.optFlag Opt.verbose Opt.showProgressBars
+
 _progressBar :: Ref.IORef (Maybe (Int, Int, String))
 {-# NOINLINE _progressBar #-}
 _progressBar = unsafePerformIO $ Ref.newIORef Nothing
 
 initProgress :: Int -> IO ()
-initProgress n =
+initProgress n = doIfIO ifShowProgress $ do
     Ref.writeIORef _progressBar (Just (0, n, ""))
 
 initProgressWithMsg :: Int -> String -> IO ()
-initProgressWithMsg n msg = do
+initProgressWithMsg n msg = doIfIO ifShowProgress $ do
     Ref.writeIORef _progressBar (Just (0, n, msg))
 
 refreshProgress :: IO ()
-refreshProgress = do
+refreshProgress = doIfIO ifShowProgress $ do
     pg <- Ref.readIORef _progressBar
     case pg of
         Just (i, maxi, msg) -> do
@@ -113,20 +116,20 @@ refreshProgress = do
         Nothing -> return ()
 
 updateProgress :: Int -> IO ()
-updateProgress di = do
+updateProgress di = doIfIO ifShowProgress $ do
     Just (c, maxi, msg) <- Ref.readIORef _progressBar
     let i = c+di
     Ref.writeIORef _progressBar (Just (i, maxi, msg))
     refreshProgress
 
 updateProgressMsg :: String -> IO ()
-updateProgressMsg m = do
+updateProgressMsg m = doIfIO ifShowProgress $ do
     Just (c, maxi, _) <- Ref.readIORef _progressBar
     Ref.writeIORef _progressBar (Just (c, maxi, m))
     refreshProgress
 
 endProgress :: IO ()
-endProgress = do
+endProgress = doIfIO ifShowProgress $ do
     Just (_, maxi, msg) <- Ref.readIORef _progressBar
     Ref.writeIORef _progressBar (Just (maxi, maxi, msg))
     refreshProgress
