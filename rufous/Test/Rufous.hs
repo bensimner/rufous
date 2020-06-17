@@ -115,6 +115,7 @@ runRufousOnDugs opts s dugs = do
          Log.updateProgressMsg ("Evaluated " ++ show i ++ "/" ++ show n ++ " DUGs")
          return r
    Log.endProgress
+   Log.info "Evaluated all DUGs"
 
    case R.splitResults results of
       Left (R.ResultFail f) -> do
