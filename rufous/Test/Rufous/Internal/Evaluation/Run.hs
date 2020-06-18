@@ -261,11 +261,11 @@ runDynCell s o i n (S.ImplType retT) d maybeShadow = result
       tryCheckShadowObs r' =
          case maybeShadow of
             Nothing -> return $ RunSuccess r'
-            Just (sh, _) -> checkShadowObs sh d r'
+            _ -> checkShadowObs (n^.D.shadow) d r'
 
       checkShadowObs :: Typeable b => Dynamic -> Dynamic -> b -> IO RunResult
-      checkShadowObs shObservation observation ret =
-         case i^.S.implEq of
+      checkShadowObs shObservation observation ret = do
+         case shadowImplementation^.S.implEq of
             Just m -> do
                let eqDyn = m M.! (o^.S.opName)
                r <- runDyn False fromDynamic (eqDyn `dynApp` shObservation `dynApp` observation)
