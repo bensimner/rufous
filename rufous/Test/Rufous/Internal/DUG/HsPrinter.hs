@@ -5,6 +5,7 @@ import System.Directory
 import Control.Lens
 
 import qualified Test.Rufous.Signature as S
+import qualified Test.Rufous.Options as Opt
 
 import Test.Rufous.Internal.DUG.Types
 import Data.List (sortOn)
@@ -39,11 +40,14 @@ checkPath pth = do
    else
       error $ "Failed to render DUG. Directory " ++ dir ++ " does not exist."
 
-printDUGtoFile :: FilePath -> DUG -> IO ()
-printDUGtoFile fName d = checkPath fName >> writeFile hsName (sprintDUG d)
+printDUGtoFile :: Opt.RufousOptions -> FilePath -> DUG -> IO String
+printDUGtoFile opts fName d = do
+      checkPath fName >> writeFile hsName (sprintDUG d)
+      return hsName
    where hsName = addExtension fName "hs"
 
-printDUG :: FilePath -> DUG -> IO ()
-printDUG dir d = do
+printDUG :: Opt.RufousOptions -> FilePath -> DUG -> IO ()
+printDUG opts dir d = do
    let rootFName = dir </> (d^.name)
-   printDUGtoFile rootFName d
+   _ <- printDUGtoFile opts rootFName d
+   return ()

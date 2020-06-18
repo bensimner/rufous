@@ -4,10 +4,13 @@ import System.FilePath
 import System.Directory
 import Control.Lens ((^.))
 
+import Data.Maybe (fromJust)
 import Data.List (intercalate)
 import System.Process
 
+import qualified Test.Rufous.Options as Opt
 import qualified Test.Rufous.Signature as S
+import qualified Test.Rufous.Run as R
 
 import Test.Rufous.Internal.DUG.Types
 
@@ -26,6 +29,10 @@ showEdge to arc from = show from ++ "->" ++ show to ++ "[label=\"" ++ show arc +
 showNode :: Node -> String
 showNode n = show (n ^. nodeId) ++ "[label=\"" ++ nodeLabel n ++ "\"]"
 
+showNodeDetail :: S.Signature -> Node -> String
+showNodeDetail s n = show (n ^. nodeId) ++ "[label=\"" ++ nodeLabel n ++ " :: (" ++ shadowStr ++ ")\"]"
+   where shadowStr = R.nodeShow (n^.operation) (fromJust (s^.S.shadowImpl)) (n^.shadow)
+
 checkPath :: FilePath -> IO ()
 checkPath pth = do
    let dir = takeDirectory pth
@@ -36,10 +43,9 @@ checkPath pth = do
       error $ "Failed to render DUG. Directory " ++ dir ++ " does not exist."
 
 -- | Prints a DUG to file using DOT
-printDUGtoFile :: FilePath -> DUG -> IO ()
-printDUGtoFile rootFName d = do
+printDUGtoFile :: Opt.RufousOptions -> FilePath -> DUG -> IO String
+printDUGtoFile opts rootFName d = do
    checkPath rootFName
-   putStrLn $ "[dot/...] writing dug " ++ dotName
    writeFile dotName ""
    write "digraph G {"
    write "overlap=\"false\""
@@ -47,17 +53,21 @@ printDUGtoFile rootFName d = do
       write "-1 [label=\"undefined\"]"
    else
       return ()
-   write . unlines $ [showNode n | n <- nodes d]
+   write . unlines $ [showN n | n <- nodes d]
    write . unlines $ [showEdge to arc from | (to, arc, from) <- edges d]
    write "}"
-   putStrLn $ "[dot/...] creating " ++ pdfName
    _ <- createProcess (proc "neato" [dotName, "-Tpdf", "-o", pdfName])
-   return ()
+   return pdfName
    where write s = appendFile dotName (s ++ "\n")
          dotName = addExtension rootFName "dot"
          pdfName = addExtension rootFName "pdf"
+         showN = case Opt.dumpDUGDetail (Opt.logOptions opts) of
+            1 -> showNode
+            2 -> showNodeDetail (Opt.signature opts)
+            _ -> error "Rufous: unexpected dumpDUGDetail, expect one of {1,2}"
 
-printDUG :: FilePath -> DUG -> IO ()
-printDUG dir d = do
+printDUG :: Opt.RufousOptions -> FilePath -> DUG -> IO ()
+printDUG opts dir d = do
    let rootFName = dir </> (d^.name)
-   printDUGtoFile rootFName d
+   _ <- printDUGtoFile opts rootFName d
+   return ()

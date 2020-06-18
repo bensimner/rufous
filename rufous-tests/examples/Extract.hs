@@ -118,7 +118,7 @@ main = do
    dug <- extract _ListADT program
    putStrLn "Extracted DUG:"
    print dug
-   GraphViz.printDUG "output/" dug
+   GraphViz.printDUG args "output/" dug
    putStrLn "Extracted Source:"
    let src = SrcPrinter.sprintDUG dug
    putStrLn src

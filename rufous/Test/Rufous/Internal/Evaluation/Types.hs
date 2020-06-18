@@ -13,7 +13,7 @@ import qualified Data.Map as M
 import Data.List (intercalate)
 
 import qualified Test.Rufous.Signature as S
-import qualified Test.Rufous.DUG as D
+import qualified Test.Rufous.Internal.DUG.Types as D
 import qualified Test.Rufous.Profile as P
 
 -- | Control flow between implementations and rufous is controlled

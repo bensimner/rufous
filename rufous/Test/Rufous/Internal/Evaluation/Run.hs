@@ -5,6 +5,8 @@ import Control.Lens
 
 import Unsafe.Coerce
 import Control.Exception
+import System.IO.Unsafe
+
 import Data.Dynamic
 
 import Data.Time.Clock
@@ -14,7 +16,8 @@ import qualified Data.List as L
 import Data.Maybe (fromJust)
 
 import qualified Test.Rufous.Signature as S
-import qualified Test.Rufous.DUG as D
+import qualified Test.Rufous.Internal.DUG.Types as D
+import qualified Test.Rufous.Internal.DUG.ProfileExtractor as PrExtract
 import qualified Test.Rufous.Internal.DUG.HsPrinter as DP
 
 import Test.Rufous.Internal.Evaluation.Types
@@ -27,7 +30,7 @@ import qualified Test.Rufous.Internal.Logger as Log
 run :: S.Signature -> D.DUG -> S.Implementation -> [S.Implementation] -> Int -> IO Result
 run s d nullImpl impls i = do
    !results <- mapM (\_ -> runOnDUG s d nullImpl impls) [1..i]
-   let extractedProfile = D.extractProfile s d
+   let extractedProfile = PrExtract.extractProfile s d
    let opCounts = M.empty
    return $ Result d extractedProfile opCounts (foldl1 mergeDUGTimeInfos results) results
 
@@ -53,12 +56,12 @@ runOnDUG s d nullImpl impls = do
    where
       failOut f = return $ DUGEvalFail f
 
--- | check that the extracted shadows for non-observer nodes matches those of observer nodes
+-- | check that the extracted shadows for non-observer nodes matches
+-- the computed shadow during generation
 checkDugShadows :: S.Signature -> D.DUG -> S.Implementation -> IO RunResult
 checkDugShadows s dug impl = collect <$> checks
    where
-      allNodes = M.elems $ dug^.D.operations
-      checks = sequence $ (check <$> allNodes)
+      checks = sequence $ (check <$> D.observers dug)
 
       -- for each version V with Shadow S_v check if
       --  S_v == extract V
@@ -73,6 +76,8 @@ checkDugShadows s dug impl = collect <$> checks
          let shadowDyn = n^.D.shadow
          let Just shImpl = s^.S.shadowImpl
          let Just (_, shadowIty) = shImpl ^. S.implOperations . at (n^.D.operation^.S.opName)
+
+         Log.debug $ "check n=" ++ DP.showNode n
 
          -- run the dynamic cell and check it against the Shadow, timing it
          r <- runDynCell s o impl n ity valueDyn (Just (shadowDyn, shadowIty))
@@ -302,6 +307,16 @@ runDynCell s o i n (S.ImplType retT) d maybeShadow = result
                      return $ RunShadowFailure i n (unsafeCoerce s1)
                   _ -> return $ RunShadowFailure i n "N/A"
 
+nodeShow :: S.Operation -> S.Implementation -> Dynamic -> String
+nodeShow op impl dyn = unsafePerformIO $ do
+      case impl^.S.implShow of
+         Nothing -> return "N/A"
+         Just m -> do
+            let showDyn = m M.! (op^.S.opName)
+            showSh <- runDyn "" fromDynamic (showDyn `dynApp` dyn)
+            case showSh of
+               RunSuccess s1 -> return (unsafeCoerce s1)
+               _ -> return "N/A"
 
 -- | Run a Dynamic, try force it to WHNF, then return a RunResult
 -- which is a:

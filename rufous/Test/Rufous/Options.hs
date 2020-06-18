@@ -32,10 +32,9 @@ module Test.Rufous.Options
    )
 where
 
-import qualified Test.Rufous.Signature as S
 import qualified Test.Rufous.Profile as P
-import qualified Test.Rufous.DUG as D
-
+import qualified Test.Rufous.Internal.Signature.SignatureType as S
+import qualified Test.Rufous.Internal.DUG.Types as D
 import Test.Rufous.Internal.Aggregation.Types
 
 data RufousOptions =
@@ -84,7 +83,8 @@ data RufousOptions =
 data LogOptions =
    LogOptions {
         dumpDir :: String
-      , dumpDugs :: Bool
+      , dumpDUGs :: Bool
+      , dumpDUGDetail :: Int -- 0 = just shape of DUG, 1 = operations 2 = shadows etc
       , dumpPhaseTiming :: Bool
       , showNullTimes :: Bool
       , showProgressBars :: Bool
@@ -138,7 +138,8 @@ genArgs = GenOptions
 logArgs :: LogOptions
 logArgs =
    LogOptions
-      { dumpDugs=False
+      { dumpDUGs=False
+      , dumpDUGDetail=1
       , dumpDir="./"
       , dumpPhaseTiming=True
       , showNullTimes=True
