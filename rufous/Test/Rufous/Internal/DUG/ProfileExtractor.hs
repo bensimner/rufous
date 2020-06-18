@@ -12,7 +12,7 @@ import Test.Rufous.Internal.DUG.Types
 extractProfile :: S.Signature -> DUG -> P.Profile
 extractProfile s d = p
    where ws = weights d
-         ps = persistents d
+         ps = persistents s d
          m = mortality d
          sz = length (nodes d)
          p = blankProfile s
@@ -40,18 +40,26 @@ normMap :: M.Map String Float -> M.Map String Float
 normMap m = M.map (`guardedDiv` tot) m
    where tot = sum (M.elems m)
 
-persistents :: DUG -> M.Map String Float
-persistents d = M.fromList [(o, persistent o) | o <- opNames]
-   where opNames = [n^.operation^.S.opName | n <- nodes d]
-         allNodes = [kinded d n | n <- nodes d]
-         allNodesOp o = allNodes <*> [o]
-         persistent o = sum [max (x - 1) 0 | x <- allNodesOp o] `guardedDiv` (sum (allNodesOp o))
+persistents :: S.Signature -> DUG -> M.Map String Float
+persistents s d = M.fromList [(o, persistent o) | o <- opNames]
+   where opNames = M.keys $ s^.S.operations
+         allNodes = [(n, isPersistent n d) | n <- nodes d]
+         allNodesOp o = [n | n <- nodes d, n^.operation^.S.opName == o]
+         persistent o = realLen [() | (n,True) <- allNodes, n^.operation^.S.opName == o] `guardedDiv` (realLen (allNodesOp o))
+         realLen = fromIntegral . length
+isPersistent :: Node -> DUG -> Bool
+isPersistent node d = and [n >= earliest | m <- mutators]
+   where n = node^.nodeId
+         indexes = edgesFrom d node
+         mutators = [i | i <- indexes, isMutator (nodeAt i d)]
+         earliest = minimum mutators
+
 
 -- | for each note, return a map which says
 -- how many of a particular operation were performed on it.
 kinded :: Num a => DUG -> Node -> String -> a
 kinded d node opName =
-   sum [1 | n' <- edgesFrom d node, (nodeAt d n')^.operation^.S.opName == opName]
+   sum [1 | n' <- edgesFrom d node, (nodeAt n' d)^.operation^.S.opName == opName]
 
 -- Sometimes NaN appears for DUGs with no operations of one weight or no persistent
 -- applications, and these must be rounded to 0.

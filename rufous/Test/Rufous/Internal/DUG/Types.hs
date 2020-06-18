@@ -43,8 +43,8 @@ data DUG =
    deriving (Show)
 makeLenses ''DUG
 
-nodeAt :: DUG -> Int -> Node
-nodeAt d i = (d^.operations) M.! i
+nodeAt :: Int -> DUG -> Node
+nodeAt i d = (d^.operations) M.! i
 
 nodes :: DUG -> [Node]
 nodes d = d ^. operations & M.elems
@@ -78,12 +78,18 @@ size d = M.size $ d^.operations
 
 observers :: DUG -> [Node]
 observers d = filter isObserver $ d ^. operations ^.. traverse
-   where isObserver n = n^.operation^.S.opCategory == S.Observer
 
 mutators :: DUG -> [Node]
 mutators d = filter isMutator $ d ^. operations ^.. traverse
-   where isMutator n = n^.operation^.S.opCategory == S.Mutator
 
 generators :: DUG -> [Node]
 generators d = filter isGenerator $ d ^. operations ^.. traverse
-   where isGenerator n = n^.operation^.S.opCategory == S.Generator
+
+isObserver :: Node -> Bool
+isObserver n = n^.operation^.S.opCategory == S.Observer
+
+isMutator :: Node -> Bool
+isMutator n = n^.operation^.S.opCategory == S.Mutator
+
+isGenerator :: Node -> Bool
+isGenerator n = n^.operation^.S.opCategory == S.Generator
