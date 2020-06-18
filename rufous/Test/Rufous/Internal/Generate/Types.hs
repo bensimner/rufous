@@ -17,6 +17,7 @@ import qualified Test.Rufous.Profile as P
 import qualified Test.Rufous.Signature as S
 
 import qualified Test.Rufous.Internal.Generate.MSet as MSt
+import qualified Test.Rufous.Internal.Generate.LivingSet as LSt
 
 import qualified Test.Rufous.Internal.Logger as Log
 
@@ -57,6 +58,7 @@ data DebugInfo =
       , _flatDeflateSteps :: Int         -- the number of deflate steps which failed to deflate anything.
       , _noLivingNodes :: Int            -- the number of times a BuffereOperation couldn't be satisfied because there were no living nodes
       , _inflatedOps :: M.Map String Int -- the number of times each operation was buffered
+      , _committedOps :: M.Map String Int -- the number of times each operation was actually added to the DUG
       , _deadNodes :: Int                -- a count of the number of nodes that have died so far
       }
    deriving (Show)
@@ -69,6 +71,7 @@ prettyDebugInfo dbg =
    ++          "deflateSteps=" ++ show (dbg^.deflateSteps) ++ ","
    ++          "noLivingNodes=" ++ show (dbg^.noLivingNodes) ++ ","
    ++          "inflatedOps=" ++ show (dbg^.inflatedOps) ++ ","
+   ++          "committedOps=" ++ show (dbg^.committedOps) ++ ","
    ++ ")"
 
 -- | During generation there is a lot of state that is kept:
@@ -83,7 +86,8 @@ data GenSt =
       , _profile :: P.Profile
       , _buffer :: Sq.Seq BufferedOperation
       , _dug :: D.DUG
-      , _living :: St.Set Int
+      , _living :: LSt.LivingSet
+      , _failedApplicationCount :: M.Map Int Int  -- we just store 1 count for all operations
       , _mutators :: NodeBucket
       , _observers :: NodeBucket
       , _nodeCounts :: M.Map Int Int
@@ -99,11 +103,13 @@ emptyNodeBucket = NodeBucket MSt.empty MSt.empty
 -- | Create an empty gen state
 -- TODO: better seed...
 emptyGenSt :: Opt.RufousOptions -> S.Signature -> P.Profile -> String -> GenSt
-emptyGenSt o s p name = GenSt o s p Sq.empty d St.empty emptyNodeBucket emptyNodeBucket nc (mkStdGen 0) debug
+emptyGenSt opts s p name = GenSt opts s p Sq.empty d emptyLiving emptyAppCount emptyNodeBucket emptyNodeBucket nc (mkStdGen 0) debug
    where d = D.ginfo .~ (Just empty_info) $ D.emptyDUG name
-         debug = Dbg 0 0 0 0 0 M.empty 0
+         debug = Dbg 0 0 0 0 0 M.empty M.empty 0
          nc = M.empty
          empty_info = D.GInfo (-1) p
+         emptyAppCount = M.empty
+         emptyLiving = LSt.empty s
 
 -- | The algorithm used here is stateful, and so we perform
 -- the transformations of the current gen-state imperatively in the

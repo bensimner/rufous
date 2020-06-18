@@ -44,6 +44,7 @@ library
                        , Test.Rufous.Internal.Generate.Buffer
                        , Test.Rufous.Internal.Generate.Core
                        , Test.Rufous.Internal.Generate.MSet
+                       , Test.Rufous.Internal.Generate.LivingSet
                        , Test.Rufous.Internal.Generate.Random
                        , Test.Rufous.Internal.Generate.Types
                        , Test.Rufous.Internal.Signature.ProfileOperations
