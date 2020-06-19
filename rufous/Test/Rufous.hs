@@ -106,8 +106,8 @@ runRufousOnDugs opts s dugs = do
 
    let n = length dugs
 
-   -- for each DUG, for each observer, for each run, for each implementation we have 1 evaluation.
-   let numObservers = length impls * Opt.numberOfRuns opts * sum [length $ D.observers d | d <- dugs]
+   -- for each DUG, for each observer, for each run, for each implementation (+ null impl) we have 1 evaluation.
+   let numObservers = (1 + length impls) * Opt.numberOfRuns opts * sum [length $ D.observers d | d <- dugs]
 
    Log.info "Evaluating DUGs:"
    Log.debug $ "#observers=" ++ show numObservers
