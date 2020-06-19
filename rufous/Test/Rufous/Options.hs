@@ -45,6 +45,7 @@ data RufousOptions =
       , averageDugSizes :: [Int]
       , numberOfTests :: Int
       , numberOfRuns :: Int
+      , randomSeed :: Int
 
       -- | Logging output
       -- Rufous has 4 output types:
@@ -155,6 +156,7 @@ args =
       , averageDugSizes=[10, 100, 1000, 5000]
       , numberOfTests=100
       , numberOfRuns=10
+      , randomSeed=(-1)
       , verbose=False
       , debug=False
       , logLevel=(-1)

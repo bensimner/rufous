@@ -101,9 +101,8 @@ emptyNodeBucket :: NodeBucket
 emptyNodeBucket = NodeBucket MSt.empty MSt.empty
 
 -- | Create an empty gen state
--- TODO: better seed...
-emptyGenSt :: Opt.RufousOptions -> S.Signature -> P.Profile -> String -> GenSt
-emptyGenSt opts s p name = GenSt opts s p Sq.empty d emptyLiving emptyAppCount emptyNodeBucket emptyNodeBucket nc (mkStdGen 0) debug
+emptyGenSt :: Opt.RufousOptions -> S.Signature -> P.Profile -> StdGen -> String -> GenSt
+emptyGenSt opts s p rnd name = GenSt opts s p Sq.empty d emptyLiving emptyAppCount emptyNodeBucket emptyNodeBucket nc rnd debug
    where d = D.ginfo .~ (Just empty_info) $ D.emptyDUG name
          debug = Dbg 0 0 0 0 0 M.empty M.empty 0
          nc = M.empty

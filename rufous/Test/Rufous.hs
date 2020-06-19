@@ -31,6 +31,8 @@ where
 import Control.Exception
 import Control.Lens
 
+import System.Random
+
 import qualified Test.Rufous.Options as Opt
 
 import qualified Test.Rufous.DUG as D
@@ -175,6 +177,16 @@ mainWith options = do
 
    let s = Opt.signature opts
    Log.info $ "Found implementations: " ++ show (s^.S.implementations)
+
+   seed <-
+      case Opt.randomSeed opts of
+         (-1) -> randomRIO (1,100000)
+         i -> return i
+
+   Log.info $ "Using randomSeed: " ++ show seed
+
+   let stdgen = mkStdGen seed
+   setStdGen stdgen
 
    let avgSizes = Opt.averageDugSizes opts
    ps <-

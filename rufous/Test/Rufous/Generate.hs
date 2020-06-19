@@ -29,11 +29,11 @@ generateDUG :: Opt.RufousOptions -> S.Signature -> P.Profile -> IO D.DUG
 generateDUG o s p = do
       Log.debug $ "generating of size " ++ show (p^.P.size)
       precheck o s p
-      name <- freshName
+
+      stdgen <- getStdGen
+      let (nameUUID, gen') = randomR (999 :: Int, 1000000) stdgen
+      let freshName = "dug" ++ (show nameUUID)
       let size = p^.P.size
-      let (a, _) = runState (build size) (emptyGenSt o s p name)
+      let (a, st') = runState (build size) (emptyGenSt o s p gen' freshName)
+      setStdGen (st'^.gen)
       return a
-   where
-      freshName = do
-         n <- randomRIO (999 :: Int, 10000000)
-         return $ "dug" ++ (show n)
