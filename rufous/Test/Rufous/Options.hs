@@ -1,7 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 module Test.Rufous.Options
    ( RufousOptions(..)
-   , LogOptions(..)
+   , OutputOptions(..)
 
    -- | Aggregation Options
    , AggregatorType(..)
@@ -32,6 +32,8 @@ module Test.Rufous.Options
    )
 where
 
+import Prelude hiding (log)
+
 import qualified Test.Rufous.Profile as P
 import qualified Test.Rufous.Internal.Signature.SignatureType as S
 import qualified Test.Rufous.Internal.DUG.Types as D
@@ -49,23 +51,25 @@ data RufousOptions =
 
       -- | Logging output
       -- Rufous has 4 output types:
-      --  OUTPUT, TRACE, LOG, DEBUG
-      --  logLevel defines which are visible:
-      --  0 - OUTPUT
-      --  1 - OUTPUT, TRACE
-      --  2 - OUTPUT, TRACE, LOG
-      --  3 - OUTPUT, TRACE, LOG, DEBUG
+      --  NORMAL, INFO, VERBOSE, DEBUG
+      --  verbosity defines which are visible:
+      --  0 - NORMAL
+      --  1 - NORMAL, INFO
+      --  2 - NORMAL, INFO, VERBOSE
+      --  3 - NORMAL, INFO, VERBOSE, DEBUG
       --
-      -- verbose=True sets logLevel>=1
-      -- debug=True sets logLevel>=3
+      -- info=True sets verbosity>=1
+      -- verbose=True sets verbosity>=2
+      -- debug=True sets verbosity>=3
+      , verbosity :: Int
+      , info :: Bool
       , verbose :: Bool
       , debug :: Bool
-      , logLevel :: Int
 
       -- | Rufous can also output additional information
       -- about the DUGs as it generates them
       -- e.g. graphviz for each DUG,  progress bars etc
-      , logOptions :: LogOptions
+      , outputOptions :: OutputOptions
 
       -- | Unused
       , genOptions :: GenOptions
@@ -81,8 +85,15 @@ data RufousOptions =
       }
    deriving (Show)
 
-data LogOptions =
-   LogOptions {
+data Verbosity =
+     NORMAL
+   | INFO
+   | VERBOSE
+   | DEBUG
+   deriving (Ord, Enum, Eq, Show)
+
+data OutputOptions =
+   OutputOptions {
         dumpDir :: String
       , dumpDUGs :: Bool
       , dumpDUGDetail :: Int -- 0 = just shape of DUG, 1 = operations 2 = shadows etc
@@ -96,11 +107,11 @@ data GenOptions =
    GenOptions
    deriving (Show)
 
-optValue :: (RufousOptions -> Bool) -> (LogOptions -> a) -> a -> RufousOptions -> a
-optValue f g x r = if f r then g (logOptions r) else x
+optValue :: (RufousOptions -> Bool) -> (OutputOptions -> a) -> a -> RufousOptions -> a
+optValue f g x r = if f r then g (outputOptions r) else x
 
-optFlag :: (RufousOptions -> Bool) -> (LogOptions -> Bool) -> RufousOptions -> Bool
-optFlag f g r = if f r then g (logOptions r) else False
+optFlag :: (RufousOptions -> Bool) -> (OutputOptions -> Bool) -> RufousOptions -> Bool
+optFlag f g r = if f r then g (outputOptions r) else False
 
 verboseOnly :: RufousOptions -> Bool
 verboseOnly opts = verbose opts && not (debug opts)
@@ -115,30 +126,34 @@ doIfElse f opts a _ | f opts = a
 doIfElse _ _ _ b = b
 
 normalize :: RufousOptions -> RufousOptions
-normalize opt = opt{logLevel=newLogLevel, debug=enableDebug, verbose=enableVerbose}
+normalize opt = opt{verbosity=newLogLevel, info=enableInfo, debug=enableDebug, verbose=enableVerbose}
    where
       newLogLevel =
-         case logLevel opt of
+         case verbosity opt of
             i | i == -1 ->
                if debug opt
                then 3
                else
                   if verbose opt
-                  then 1
-                  else 0
+                  then 2
+                  else
+                     if info opt
+                        then 1
+                        else 0
             i | i <= 3 ->
-               logLevel opt
-            _ -> error "Rufous: unsupported logLevel:  only 0 <= logLevel <= 3  supported."
+               verbosity opt
+            _ -> error "Rufous: unsupported verbosity:  only 0 <= verbosity <= 3  supported."
       enableDebug = newLogLevel >= 3
-      enableVerbose= newLogLevel >= 1
+      enableVerbose= newLogLevel >= 2
+      enableInfo = newLogLevel >= 1
 
 {- Default Options -}
 genArgs :: GenOptions
 genArgs = GenOptions
 
-logArgs :: LogOptions
+logArgs :: OutputOptions
 logArgs =
-   LogOptions
+   OutputOptions
       { dumpDUGs=False
       , dumpDUGDetail=1
       , dumpDir="./"
@@ -157,10 +172,11 @@ args =
       , numberOfTests=100
       , numberOfRuns=10
       , randomSeed=(-1)
+      , info=False
       , verbose=False
       , debug=False
-      , logLevel=(-1)
-      , logOptions=logArgs
+      , verbosity=(-1)
+      , outputOptions=logArgs
       , genOptions=genArgs
       , aggregator=KMeans
       , aggregationOptions=aggregationArgs

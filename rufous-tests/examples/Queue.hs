@@ -7,12 +7,15 @@ import qualified Prelude as P
 
 import Test.Rufous
    ( RufousOptions(..)
+   , OutputOptions(..)
    , makeADTSignature
    , shadowUndefined
    , guardFailed
    , extractorUndefined
    , mainWith
-   , args )
+   , args
+   , logArgs
+   )
 
 class Queue q where
    snoc :: a -> q a -> q a
@@ -77,8 +80,7 @@ data ShadowQueue x = ShadowQueue [x]
 instance Queue ShadowQueue where
    snoc x (ShadowQueue xs) = ShadowQueue (xs ++ [x])
    empty     = ShadowQueue []
-   head (ShadowQueue (_:y:_)) = y
-   head (ShadowQueue [y]) = y
+   head (ShadowQueue (y:_)) = y
    head (ShadowQueue []) = guardFailed
 
    tail (ShadowQueue (_:xs))  = ShadowQueue xs
@@ -87,4 +89,16 @@ instance Queue ShadowQueue where
 makeADTSignature ''Queue
 
 main :: IO ()
-main = mainWith args{signature=_Queue, verbose=True, averageDugSizes=[10, 100], numberOfTests=5}
+main = mainWith
+         args
+            { signature=_Queue
+            , averageDugSizes=[10, 100]
+            , numberOfTests=5 -- number of DUGs to generate
+
+            , info=True -- equivalent to saying verbosity=1
+            , outputOptions=
+               logArgs
+                  { dumpDUGs=False  -- set to True to create output/dugName.pdf graphviz output
+                  , dumpDUGDetail=2 -- show shadow in the graphviz output
+                  }
+            }

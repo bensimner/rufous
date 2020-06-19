@@ -141,7 +141,7 @@ debugTrace msg = do
 verboseProgressFn :: IO () -> GenState ()
 verboseProgressFn f = do
    opts <- use opt
-   () <- if Opt.verbose opts
+   () <- if Log.ifShowProgress opts
             then return $ unsafePerformIO $ f
             else return ()
    return ()

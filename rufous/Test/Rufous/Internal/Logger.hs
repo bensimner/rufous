@@ -1,12 +1,14 @@
 -- | Internal logging module
 module Test.Rufous.Internal.Logger
-    ( info
+    ( out
+    , info
     , log
     , debug
 
     -- a version of Option.doIf
     -- but reads the RufousOptions locally
     , doIfIO
+    , ifShowProgress
 
     -- a mini progress bar
     , initProgress
@@ -29,7 +31,7 @@ import System.IO
 import System.IO.Unsafe (unsafePerformIO)
 import qualified Data.IORef as Ref
 
-import Test.Rufous.Options hiding (debug)
+import Test.Rufous.Options hiding (info, verbose, debug)
 import qualified Test.Rufous.Options as Opt
 
 {- Option state -}
@@ -44,15 +46,20 @@ initOptRef :: RufousOptions -> IO ()
 initOptRef opts = Ref.writeIORef optionRef opts
 
 {- convinence wrappers around debug logging -}
+out :: String -> IO ()
+out s = do
+    opts <- Ref.readIORef optionRef
+    outTrace opts s
+
 info :: String -> IO ()
 info s = do
    opts <- Ref.readIORef optionRef
-   verboseTrace opts s
+   infoTrace opts s
 
 log :: String -> IO ()
 log s = do
    opts <- Ref.readIORef optionRef
-   logTrace opts s
+   verboseTrace opts s
 
 debug :: String -> IO ()
 debug s = do
@@ -66,14 +73,20 @@ doIfIO f a = do
     doIf f opts a
 
 {- Internal Wrappers -}
-verboseTrace :: RufousOptions -> String -> IO ()
-verboseTrace opts msg = doIf verbose opts (traceLn msg)
+outTrace :: RufousOptions -> String -> IO ()
+outTrace opts msg = doIf ((>= 0) . verbosity) opts (outLn msg)
 
-logTrace :: RufousOptions -> String -> IO ()
-logTrace opts msg = doIf ((>= 2) . logLevel) opts (logLn msg)
+infoTrace :: RufousOptions -> String -> IO ()
+infoTrace opts msg = doIf ((>= 1) . verbosity) opts (traceLn msg)
+
+verboseTrace :: RufousOptions -> String -> IO ()
+verboseTrace opts msg = doIf ((>= 2) . verbosity) opts (logLn msg)
 
 debugTrace :: RufousOptions -> String -> IO ()
-debugTrace opts msg = doIf Opt.debug opts (debugLn msg)
+debugTrace opts msg = doIf ((>= 3) . verbosity) opts (debugLn msg)
+
+outLn :: String -> IO ()
+outLn s = last s `seq` mapM_ outPutLn (lines s)
 
 traceLn :: String -> IO ()
 traceLn s = last s `seq` mapM_ debugPutLn (map ("[ INFO] " ++) (lines s))
@@ -83,6 +96,16 @@ logLn s = last s `seq` mapM_ debugPutLn (map ("[  LOG] " ++) (lines s))
 
 debugLn :: String -> IO ()
 debugLn s = last s `seq` mapM_ debugPutLn (map ("[DEBUG] " ++) (lines s))
+
+outPutLn :: String -> IO ()
+outPutLn s = do
+    hPutStr stdout ("\r" ++ s)
+    pg <- Ref.readIORef _progressBar
+    case pg of
+        Just (_, _, _, _, k) -> hPutStr stdout (replicate (k - length s) ' ')
+        Nothing -> return ()
+    hPutStr stdout "\n"
+    refreshProgress
 
 debugPutLn :: String -> IO ()
 debugPutLn s = do
@@ -99,7 +122,7 @@ progressRefreshRate :: Rational
 progressRefreshRate = 1/5
 
 ifShowProgress :: Opt.RufousOptions -> Bool
-ifShowProgress = Opt.optFlag Opt.verbose Opt.showProgressBars
+ifShowProgress = Opt.optFlag ((>= 1) . Opt.verbosity) Opt.showProgressBars
 
 _progressBar :: Ref.IORef (Maybe (UTCTime, Int, Maybe Int, String, Int))
 {-# NOINLINE _progressBar #-}

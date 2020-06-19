@@ -14,13 +14,14 @@ import qualified Test.Rufous.Aggregate as Agg
 
 import qualified Test.Rufous.Internal.Table as T
 import qualified Test.Rufous.Internal.Utils as U
+import qualified Test.Rufous.Internal.Logger as Log
 
 -- | Given a list of annotated (normalised) DUGs perform a selection step
 -- which prints some information about the runtime
 select :: S.Signature -> [Agg.AggregatedResult] -> IO ()
 select s rs =
    let t = makeTable s rs in
-   putStrLn $ T.render t
+   Log.out $ T.render t
 
 makeTable :: S.Signature -> [Agg.AggregatedResult] -> T.Table String
 makeTable s rs = T.Table (makeHeader s) (map (\r -> makeRow s r) rs)

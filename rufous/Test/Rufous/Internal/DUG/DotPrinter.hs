@@ -61,7 +61,7 @@ printDUGtoFile opts rootFName d = do
    where write s = appendFile dotName (s ++ "\n")
          dotName = addExtension rootFName "dot"
          pdfName = addExtension rootFName "pdf"
-         showN = case Opt.dumpDUGDetail (Opt.logOptions opts) of
+         showN = case Opt.dumpDUGDetail (Opt.outputOptions opts) of
             1 -> showNode
             2 -> showNodeDetail (Opt.signature opts)
             _ -> error "Rufous: unexpected dumpDUGDetail, expect one of {1,2}"

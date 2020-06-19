@@ -4,7 +4,7 @@ module Test.Rufous
    -- Main API
      mainWith
    , Opt.RufousOptions(..)
-   , Opt.LogOptions(..)
+   , Opt.OutputOptions(..)
    , Opt.args
    , Opt.logArgs
 
@@ -124,8 +124,8 @@ runRufousOnDugs opts s dugs = do
 
    case R.splitResults results of
       Left (R.ResultFail f) -> do
-         putStrLn "** Failure to Evaluate DUG:"
-         mapM_ (putStrLn . ("   " ++)) (lines f)
+         Log.out "** Failure to Evaluate DUG:"
+         mapM_ (Log.out . ("   " ++)) (lines f)
       Right timingResults -> do
          Log.info $ "Got " ++ show (length timingResults) ++ " results"
          Opt.doIf Opt.verbose opts $ do
@@ -158,7 +158,7 @@ runRufousOnProfiles opts s profiles = do
       mapM_ (print . D.extractProfile s) dugs
 
    Opt.doIf Opt.verbose opts $ do
-      Opt.doIf (Opt.dumpDUGs . Opt.logOptions) opts $ do
+      Opt.doIf (Opt.dumpDUGs . Opt.outputOptions) opts $ do
          mapM_ (\d -> do
             fname <- D.printDUGtoFile opts ("output/" ++ d^.D.name) d
             Log.info $ "Produced " ++ fname) dugs

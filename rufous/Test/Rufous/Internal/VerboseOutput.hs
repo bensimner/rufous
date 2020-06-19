@@ -15,8 +15,8 @@ import qualified Test.Rufous.Run as R
 
 logGeneratedDUG :: D.DUG -> IO ()
 logGeneratedDUG d = do
-        Log.info $ "DUG #" ++ show i ++ " (" ++ name ++ "):"
-        Log.info $ " target profile: " ++ show profile
+        Log.log $ "DUG #" ++ show i ++ " (" ++ name ++ "):"
+        Log.log $ " target profile: " ++ show profile
     where
         info = fromJust $ d ^. D.ginfo
         i = info ^. D.idx
@@ -25,12 +25,12 @@ logGeneratedDUG d = do
 
 logTimingResults :: R.Result -> IO ()
 logTimingResults r = do
-        Log.info  $ "DUG #" ++ show i ++ " (" ++ name ++ "):"
+        Log.log   $ "DUG #" ++ show i ++ " (" ++ name ++ "):"
         Log.debug $ "     target profile: " ++ show profile
         Log.debug $ "  generated profile: " ++ show genProfile
-        Log.info  $ "  ran " ++ show n ++ " times"
+        Log.log   $ "  ran " ++ show n ++ " times"
         Log.debug $ "  allTimes: " ++ show (map timingOut times)
-        Log.info  $ "  avg time: " ++ timingOut (r^.R.resultAvgTimes)
+        Log.log   $ "  avg time: " ++ timingOut (r^.R.resultAvgTimes)
     where
         d = r^.R.resultDUG
         info = fromJust $ d ^. D.ginfo
