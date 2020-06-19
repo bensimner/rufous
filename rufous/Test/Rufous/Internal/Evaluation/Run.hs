@@ -77,7 +77,7 @@ checkDugShadows s dug impl = collect <$> checks
          let Just shImpl = s^.S.shadowImpl
          let Just (_, shadowIty) = shImpl ^. S.implOperations . at (n^.D.operation^.S.opName)
 
-         Log.debug $ "check n=" ++ DP.showNode n
+         -- Log.debug $ "check n=" ++ DP.showNode n
 
          -- run the dynamic cell and check it against the Shadow, timing it
          r <- runDynCell s o impl n ity valueDyn (Just (shadowDyn, shadowIty))
