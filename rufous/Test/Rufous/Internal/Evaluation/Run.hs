@@ -136,6 +136,7 @@ runOn s d impl = do
          let Just valueDyn = n^.D.dyn
          -- run the dynamic cell and time it
          res <- runDynCell s o impl n ity valueDyn Nothing
+         Log.updateProgress 1
          case res of
             RunSuccess _ -> return (Just res)
             RunExcept NotImplemented -> return Nothing

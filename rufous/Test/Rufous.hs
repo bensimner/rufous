@@ -105,9 +105,12 @@ runRufousOnDugs opts s dugs = do
    Log.info $ "Found Null Implementation: " ++ show nul
 
    let n = length dugs
-   let numObservers = sum [length $ D.observers d | d <- dugs]
+
+   -- for each DUG, for each observer, for each run, for each implementation we have 1 evaluation.
+   let numObservers = length impls * Opt.numberOfRuns opts * sum [length $ D.observers d | d <- dugs]
 
    Log.info "Evaluating DUGs:"
+   Log.debug $ "#observers=" ++ show numObservers
    Log.initProgressWithMsg numObservers ("Evaluated 0/" ++ show n ++ " DUGs")
    results <- sequence $ do
       (i, d) <- zip [1..] dugs
