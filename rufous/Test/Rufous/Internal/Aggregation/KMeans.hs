@@ -15,12 +15,18 @@ import qualified Test.Rufous.Profile as P
 import qualified Test.Rufous.Run as R
 
 import Test.Rufous.Internal.Aggregation.Types
+import Test.Rufous.Internal.Logger as Log
 
 aggregateKMeans :: KMeansOptions -> [R.Result] -> IO [AggregatedResult]
 aggregateKMeans opts rs = do
       let n = numMeans opts
+      Log.debug $ "Using KMeans"
       initClusters <- makeInitClusters n rs
-      let clusters = kmeans rs initClusters
+      Log.debug $ "KMeans #init clusters=" ++ show (length initClusters)
+      Log.initUnboundedProgressWithMsg $ "Fixed-point iterations"
+      clusters <- kmeans rs initClusters
+      Log.endProgress
+      Log.debug $ "KMeans #clusters=" ++ show (length clusters)
       let groups = allocateGroups rs clusters
       let merged = map mergeGroup groups
       return merged
@@ -44,13 +50,15 @@ generateInitCluster rs _ = do
       return $ vecs !! i
    where vecs = map vec rs
 
-kmeans :: [R.Result] -> [[Float]] -> [[Float]]
+kmeans :: [R.Result] -> [[Float]] -> IO [[Float]]
 kmeans rs initClusters = go initClusters
    where
-      go c =
+      go c = do
         case kmeansIter rs c of
-          c' | end c c' -> c
-          c'            -> go c'
+          c' | end c c' -> return c
+          c'            -> do
+             Log.updateProgress 1
+             go c'
       end c c' = all (uncurry isNear) (zip c c')
 
 kmeansIter :: [R.Result] -> [[Float]] -> [[Float]]
