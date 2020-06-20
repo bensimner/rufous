@@ -1,3 +1,5 @@
+{-# LANGUAGE BangPatterns #-}
+
 module Test.Rufous.Internal.Aggregation.KMeans
    ( aggregateKMeans
    )
@@ -24,7 +26,7 @@ aggregateKMeans opts rs = do
       initClusters <- makeInitClusters n rs
       Log.debug $ "KMeans #init clusters=" ++ show (length initClusters)
       Log.initUnboundedProgressWithMsg $ "Fixed-point iterations"
-      clusters <- kmeans rs initClusters
+      !clusters <- kmeans rs initClusters
       Log.endProgress
       Log.debug $ "KMeans #clusters=" ++ show (length clusters)
       let groups = allocateGroups rs clusters

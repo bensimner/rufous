@@ -42,14 +42,6 @@ data BufferedOperation =
    deriving (Show)
 makeLenses ''BufferedOperation
 
--- | When generating we often want to create arguments to
-data NodeBucket =
-   NodeBucket
-      { _infants :: MSt.MSet Int
-      , _persistents :: MSt.MSet Int
-      }
-makeLenses ''NodeBucket
-
 data DebugInfo =
    Dbg
       { _failedGuards :: Int             -- the number of dtimes BufferedOperation's failed their guards
@@ -88,21 +80,15 @@ data GenSt =
       , _dug :: D.DUG
       , _living :: LSt.LivingSet
       , _failedApplicationCount :: M.Map Int Int  -- we just store 1 count for all operations
-      , _mutators :: NodeBucket
-      , _observers :: NodeBucket
       , _nodeCounts :: M.Map Int Int
       , _gen :: StdGen
       , _dbg :: DebugInfo
       }
 makeLenses ''GenSt
 
--- | An empty node bucket has empty infant/persistent sets
-emptyNodeBucket :: NodeBucket
-emptyNodeBucket = NodeBucket MSt.empty MSt.empty
-
 -- | Create an empty gen state
 emptyGenSt :: Opt.RufousOptions -> S.Signature -> P.Profile -> StdGen -> String -> GenSt
-emptyGenSt opts s p rnd name = GenSt opts s p Sq.empty d emptyLiving emptyAppCount emptyNodeBucket emptyNodeBucket nc rnd debug
+emptyGenSt opts s p rnd name = GenSt opts s p Sq.empty d emptyLiving emptyAppCount nc rnd debug
    where d = D.ginfo .~ (Just empty_info) $ D.emptyDUG name
          debug = Dbg 0 0 0 0 0 M.empty M.empty 0
          nc = M.empty

@@ -18,8 +18,7 @@ import qualified Test.Rufous.Profile as P
 
 import Test.Rufous.Internal.Generate.Types
 import Test.Rufous.Internal.Generate.Buffer
-import qualified Test.Rufous.Internal.Generate.Random as R
-import qualified Test.Rufous.Internal.Generate.MSet as MSt
+import qualified Test.Rufous.Internal.Generate.Random as Rnd
 import qualified Test.Rufous.Internal.Generate.LivingSet as LSt
 
 -- | Build will run the inflate/deflate cycle calling inflate 'size' times.
@@ -63,7 +62,7 @@ inflate = genBufferedOp >>= pushBuffer
 genBufferedOp :: GenState BufferedOperation
 genBufferedOp = do
    st <- get
-   o <- R.genAccordingTo (st^.profile^.P.operationWeights) (st ^. sig ^. S.operations)
+   o <- Rnd.genAccordingTo (st^.profile^.P.operationWeights) (st ^. sig ^. S.operations)
    args <- sequence $ genAbstractArgs o
    updateDbg inflatedOps (M.insertWith (+) (o^.S.opName) 1)
    return $ BufferedOperation o args 100 -- TODO: load from options
@@ -74,7 +73,7 @@ genAbstractArgs o = genAbstractFromArgTy (o^.S.opName) <$> o^.S.opArgTypes
 genAbstractFromArgTy :: String -> S.ArgType -> GenState BufferedArg
 genAbstractFromArgTy opName ty = do
    prof <- use profile
-   pers <- R.genBool ((prof^.P.persistentApplicationWeights) M.! opName)
+   pers <- Rnd.genBool ((prof^.P.persistentApplicationWeights) M.! opName)
    return $ Abstract ty (if pers then Persistent else Ephemeral)
 
 tryDeflate :: GenState Bool
@@ -104,6 +103,7 @@ commitBop bop = do
       if not validArgs then
          failure
       else do
+         -- but we already ran the shadow in tryFillNVAs !?
          result <- runShadow bop
          case result of
             R.RunSuccess _ -> cont
@@ -111,6 +111,8 @@ commitBop bop = do
             R.RunTypeMismatch -> error "Shadow type mismatch"
             R.RunExcept R.GuardFailed -> do
                _ <- sequence $ do
+                  -- this isn't right !?
+                  -- we should drop the buffered op not the already committed args!
                   Concrete (S.Version v) _ <- bop^.bufArgs
                   return $ do
                      nc <- use nodeCounts
@@ -136,13 +138,11 @@ commitBop bop = do
          dug %= D.pushNew (bop^.bufOp) (dugArgs bop) shadow
          nodeCounts %= M.insert nodeId 0
          prof <- use profile
-         alive <- R.genBool (1 - prof^.P.mortality)
+         alive <- Rnd.genBool (1 - prof^.P.mortality)
          if bop^.bufOp^.S.opCategory /= S.Observer && alive then do
-            living %= LSt.insertAll s nodeId
+            living %= LSt.addNewInfant s nodeId
          else return ()
          commitDargs bop
-         mutators  . infants %= MSt.insert nodeId
-         observers . infants %= MSt.insert nodeId
          updateDbg committedOps (M.insertWith (+) (bop^.bufOp^.S.opName) 1)
          return True
 
@@ -150,11 +150,11 @@ kill :: Int -> GenState ()
 kill n = do
    updateDbg deadNodes (+1)
    s <- use sig
-   living %= LSt.deleteAll s n
+   living %= LSt.removeFromFrontier s n
 
 killForOp :: S.Operation -> Int -> GenState ()
 killForOp o n = do
-   living %= LSt.delete (o^.S.opName) n
+   living %= LSt.deleteOp (o^.S.opName) n
    alive <- use living
 
    if not (n `LSt.memberAll` alive) then
@@ -177,35 +177,26 @@ checkDarg _      (Abstract _ _) = error "checkDarg :: unexpected abstract arg"
 -- | Given a (committed) BufferedOperation, commit the arguments
 commitDargs :: BufferedOperation -> GenState ()
 commitDargs bop = do
-      mapM_ (commitDarg bop m) (bop^.bufArgs)
-   where m :: Lens' GenSt NodeBucket
-         m = case bop^.bufOp^.S.opCategory of
-             S.Mutator -> mutators
-             S.Observer -> observers
-             S.Generator -> error "commitDargs :: Generator has unexpected version arg"
+      mapM_ (commitDarg bop) (bop^.bufArgs)
 
 -- | Given a BufferedArg, commit it
-commitDarg :: BufferedOperation -> Lens' GenSt NodeBucket -> BufferedArg -> GenState ()
-commitDarg _ _ (Abstract _ _) = error "commitDarg :: unexpected abstract arg"
-commitDarg bop m (Concrete d pty) =
+commitDarg :: BufferedOperation -> BufferedArg -> GenState ()
+commitDarg _ (Abstract _ _) = error "commitDarg :: unexpected abstract arg"
+commitDarg bop (Concrete d pty) =
    case pty of
       Nothing -> return ()
-      Just Persistent -> commitPersistent bop m d
-      Just Ephemeral -> commitEphemeral m d
+      Just Persistent -> commitPersistent bop d
+      Just Ephemeral -> commitEphemeral d
 
-commitPersistent :: BufferedOperation -> Lens' GenSt NodeBucket -> D.DUGArg -> GenState ()
-commitPersistent bop _ (S.NonVersion _) = error "commitPersistent :: unexpected Non-Version argument"
-commitPersistent bop m (S.Version v) = do
-   infs <- getBag bop m infants
---   pers <- getBag bop m persistents
-   if v `St.member` infs then do
-      m . infants %= MSt.delete v
-      m . persistents %= MSt.insert v
-   else return ()
+commitPersistent :: BufferedOperation -> D.DUGArg -> GenState ()
+commitPersistent bop (S.NonVersion _) = error "commitPersistent :: unexpected Non-Version argument"
+commitPersistent bop (S.Version v) = do
+   living %= LSt.unuse v
 
-commitEphemeral :: Lens' GenSt NodeBucket -> D.DUGArg -> GenState ()
-commitEphemeral _ (S.NonVersion _) = error "commitEphemeral :: unexpected Non-Version argument"
-commitEphemeral _ (S.Version v) = return ()
+commitEphemeral :: D.DUGArg -> GenState ()
+commitEphemeral (S.NonVersion _) = error "commitEphemeral :: unexpected Non-Version argument"
+commitEphemeral (S.Version v) = do
+   living %= LSt.unuse v
 
 abstractify :: BufferedOperation -> GenState BufferedOperation
 abstractify bop = do
@@ -280,9 +271,9 @@ trySatisfyAndPush bop = do
 trySatisfyArg :: BufferedOperation -> S.OperationCategory -> BufferedArg -> GenState BufferedArg
 trySatisfyArg _ _          (arg@(Concrete _ _)) = return arg
 trySatisfyArg _ _          (arg@(Abstract (S.NonVersion _) _)) = return arg
-trySatisfyArg bop S.Mutator  (aty@(Abstract (S.Version ()) p)) = satisfyVersionArg bop aty p mutators
-trySatisfyArg bop S.Observer (aty@(Abstract (S.Version ()) p)) = satisfyVersionArg bop aty p observers
-trySatisfyArg _ S.Generator (Abstract (S.Version _) _) = error "trySatisfy version arg to generator :: impossible by defn"
+trySatisfyArg bop S.Mutator  (aty@(Abstract (S.Version ()) p)) = satisfyVersionArg bop aty p
+trySatisfyArg bop S.Observer (aty@(Abstract (S.Version ()) p)) = satisfyVersionArg bop aty p
+trySatisfyArg _ S.Generator (Abstract (S.Version _) _) = error "Rufous: internal: trySatisfy version arg to generator: unreachable"
 
 -- | Try satisfy a non-version argument
 trySatisfyNVArg :: BufferedArg -> GenState BufferedArg
@@ -296,60 +287,77 @@ wrapNva n = Concrete (S.NonVersion n) Nothing
 
 satisfyNVA :: S.NVA () () -> GenState BufferedArg
 satisfyNVA (S.ArbArg x tproxy Nothing) = do
-   v <- R.genArbitrary tproxy
+   v <- Rnd.genArbitrary tproxy
    return $ wrapNva (S.ArbArg x v Nothing)
 satisfyNVA (S.ArbArg _ _ (Just _)) =
    error "Rufous: generation ArbArg got Just for arb type,  expected Nothing."
 satisfyNVA (S.VersionParam _) = do  -- Concretize to Int
-   i <- R.genRandomR (-10, 10)
+   i <- Rnd.genRandomR (-10, 10)
    return $ wrapNva (S.VersionParam i)
 
-satisfyVersionArg :: BufferedOperation -> BufferedArg -> PersistenceType -> Lens' GenSt NodeBucket -> GenState BufferedArg
-satisfyVersionArg bop aty Persistent bag = do
-   arg <- pickFromPersistents bop bag
+satisfyVersionArg :: BufferedOperation -> BufferedArg -> PersistenceType -> GenState BufferedArg
+satisfyVersionArg bop aty Persistent = do
+   arg <- pickFromPersistents bop
    case arg of
       Nothing -> do
          -- debugTrace $ "satisfyVersion Persistent,  noLivingNodes :: " ++ bop^.bufOp^.S.opName
          updateDbg noLivingNodes (+1)
          return aty
-      Just nodeId -> return $ Concrete (S.Version nodeId) (Just Persistent)
-satisfyVersionArg bop aty Ephemeral bag = do
-   arg <- pickFromInfants bop bag
+      Just nodeId ->
+         return $ Concrete (S.Version nodeId) (Just Persistent)
+satisfyVersionArg bop aty Ephemeral = do
+   arg <- pickFromInfants bop
    case arg of
       Nothing -> do
          -- debugTrace $ "satisfyVersion Ephemeral,  noLivingNodes :: " ++ bop^.bufOp^.S.opName
          updateDbg noLivingNodes (+1)
          return aty
-      Just nodeId -> return $ Concrete (S.Version nodeId) (Just Ephemeral)
-
--- | Pull a nodeId from the infants set
--- if no such node exists, then return Nothing
-getBag :: BufferedOperation -> Lens' GenSt NodeBucket -> Lens' NodeBucket (MSt.MSet Int) -> GenState (St.Set Int)
-getBag bop m k = do
-   bg <- use (m . k)
-   alive <- use living
-   let aliveForBop = LSt.image (bop^.bufOp^.S.opName) alive
-   return $ aliveForBop `St.intersection` (MSt.toSet bg)
+      Just nodeId ->
+         return $ Concrete (S.Version nodeId) (Just Ephemeral)
 
 -- | Non-destructively pick an argument from the infants bag
-pickFromInfants :: BufferedOperation -> Lens' GenSt NodeBucket -> GenState (Maybe Int)
-pickFromInfants bop m = do
-   infs <- getBag bop m infants
-   case St.size infs of
-      0 -> return Nothing
-      _ -> do
-         x <- R.genUniformSet infs
+pickFromInfants :: BufferedOperation -> GenState (Maybe Int)
+pickFromInfants bop = do
+   alive <- use living
+   case LSt.imageUnusedInf (bop^.bufOp^.S.opName) alive of
+      s | St.size s > 0 -> do
+         x <- Rnd.genUniformSet s
+         living %= LSt.useInf x
          return $ Just x
+      _ ->
+         case LSt.imageInf (bop^.bufOp^.S.opName) alive of
+            s | St.size s > 0 -> do
+               x <- Rnd.genUniformSet s
+               living %= LSt.useInf x
+               return $ Just x
+            _ -> return Nothing
 
 -- | Non-destructively pick an argument from either the persistents or infants bag
-pickFromPersistents :: BufferedOperation -> Lens' GenSt NodeBucket -> GenState (Maybe Int)
-pickFromPersistents bop m = do
-   pers <- getBag bop m persistents
-   infs <- getBag bop m infants
-   let merged = pers `St.union` infs
-   case St.size merged of
-      0 -> return Nothing
-      _ -> do
-         x <- R.genUniformSet merged
+pickFromPersistents :: BufferedOperation -> GenState (Maybe Int)
+pickFromPersistents bop = do
+   alive <- use living
+   case LSt.imageUnused (bop^.bufOp^.S.opName) alive of
+      s | St.size s > 0 -> do
+         x <- Rnd.genUniformSet s
+         living %= LSt.usePers x
          return $ Just x
+      _ ->
+         case LSt.imageUnusedInf (bop^.bufOp^.S.opName) alive of
+            s | St.size s > 0 -> do
+               x <- Rnd.genUniformSet s
+               living %= LSt.useInf x
+               return $ Just x
+            _ ->
+               case LSt.imageInf (bop^.bufOp^.S.opName) alive of
+                  s | St.size s > 0 -> do
+                     x <- Rnd.genUniformSet s
+                     living %= LSt.useInf x
+                     return $ Just x
+                  _ ->
+                     case LSt.image (bop^.bufOp^.S.opName) alive of
+                        s | St.size s > 0 -> do
+                           x <- Rnd.genUniformSet s
+                           living %= LSt.usePers x
+                           return $ Just x
+                        _ -> return Nothing
 

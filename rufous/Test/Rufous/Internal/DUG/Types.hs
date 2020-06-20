@@ -10,6 +10,8 @@ import qualified Data.Map as M
 import qualified Test.Rufous.Signature as S
 import qualified Test.Rufous.Profile as P
 
+import qualified Test.Rufous.Internal.Generate.MSet as MSt
+
 type DUGArg = S.Arg Int Int ()
 data Node =
    Node
@@ -38,7 +40,9 @@ data DUG =
    DUG
       { _name :: String
       , _operations :: M.Map Int Node
+      , _reverseArgs :: M.Map Int (MSt.MSet Int)
       , _ginfo :: Maybe DUGGenerationInfo
+      , _dugSize :: Int
       }
    deriving (Show)
 makeLenses ''DUG
@@ -56,22 +60,33 @@ edgesTo :: DUG -> Node -> [Int]
 edgesTo _ n = [k | S.Version k <- n ^. args]
 
 edgesFrom :: DUG -> Node -> [Int]
-edgesFrom d i = [k | (j, _, k) <- edges d, j == i^.nodeId]
+edgesFrom d n = MSt.toList $ (d^.reverseArgs) M.! (n^.nodeId)
 
 -- | Create a new empty DUG with a given name
 emptyDUG :: String -> DUG
-emptyDUG dugName = DUG dugName M.empty Nothing
+emptyDUG dugName = DUG dugName M.empty M.empty Nothing 0
 
 nextId :: DUG -> Int
-nextId = length . nodes
+nextId d = 1 + M.size (d^.operations)
 
 -- | Create and insert a new Node
 pushNew :: S.Operation -> [DUGArg] -> Dynamic -> DUG -> DUG
 pushNew o dargs dyn dug =
       dug & operations . at newId ?~ n
+          & reverseArgs %~ pushRevArgs newId dargs
+          & reverseArgs %~ M.insert newId MSt.empty
+          & dugSize .~ newId
    where
       newId = nextId dug
       n = Node newId o dargs dyn Nothing
+
+pushRevArgs :: Int -> [DUGArg] -> M.Map Int (MSt.MSet Int) -> M.Map Int (MSt.MSet Int)
+pushRevArgs nId dargs m = go dargs m
+   where
+      go (S.Version v : dargs') m' =
+         M.update (Just . MSt.insert nId) v (go dargs' m')
+      go (_ : dargs') m' = go dargs' m'
+      go [] m' = m'
 
 size :: DUG -> Int
 size d = M.size $ d^.operations

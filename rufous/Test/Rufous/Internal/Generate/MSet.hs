@@ -13,7 +13,7 @@ member a set =
       Just _ -> True
 
 insert :: Ord a => a -> MSet a -> MSet a
-insert a set = M.insertWith (\_ v -> v + 1) a 1 set
+insert a set = M.insertWith (+) a 1 set
 
 delete :: Ord a => a -> MSet a -> MSet a
 delete a set = M.update (\v -> del $ v - 1) a set
@@ -27,4 +27,7 @@ toList :: Ord a => MSet a -> [a]
 toList mset = [k | (k, v) <- M.toList mset, v > 0]
 
 toSet :: Ord a => MSet a -> St.Set a
-toSet = St.fromList . toList
+toSet = M.keysSet
+
+size :: MSet a -> Int
+size = M.size
