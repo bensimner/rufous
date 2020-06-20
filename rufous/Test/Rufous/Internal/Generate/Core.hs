@@ -65,7 +65,8 @@ genBufferedOp = do
    o <- Rnd.genAccordingTo (st^.profile^.P.operationWeights) (st ^. sig ^. S.operations)
    args <- sequence $ genAbstractArgs o
    updateDbg inflatedOps (M.insertWith (+) (o^.S.opName) 1)
-   return $ BufferedOperation o args 100 -- TODO: load from options
+   bopId <- Rnd.genRandomR (1,100000)
+   return $ BufferedOperation bopId o args 100 Nothing -- TODO: load from options
 
 genAbstractArgs :: S.Operation -> [GenState BufferedArg]
 genAbstractArgs o = genAbstractFromArgTy (o^.S.opName) <$> o^.S.opArgTypes
@@ -103,24 +104,24 @@ commitBop bop = do
       if not validArgs then
          failure
       else do
-         -- but we already ran the shadow in tryFillNVAs !?
-         result <- runShadow bop
+         -- attach the shadow
+         -- we do this so that we can run it once
+         -- and re-use the same eval'd cell
+         shadow <- makeShadow bop
+
+         let bop' = bop{_bufShadow=Just shadow}
+         result <- runShadow bop'
          case result of
-            R.RunSuccess _ -> cont
-            R.RunExcept R.NotImplemented -> cont
+            R.RunSuccess _ -> cont shadow
+            R.RunExcept R.NotImplemented -> cont shadow
             R.RunTypeMismatch -> error "Shadow type mismatch"
             R.RunExcept R.GuardFailed -> do
-               _ <- sequence $ do
-                  -- this isn't right !?
-                  -- we should drop the buffered op not the already committed args!
-                  Concrete (S.Version v) _ <- bop^.bufArgs
-                  return $ do
-                     nc <- use nodeCounts
-                     let Just k = M.lookup v nc
-                     if k > 200 then --  TODO: move to options/settings
-                        kill v
-                     else
-                        nodeCounts %= M.update (Just . (+1)) v
+               -- record for each Version that it failed for this arg.
+               -- and for versions that reached a threshold, don't try those
+               -- Versions again for this operation
+               -- debugTrace $ "tryFillNVAs :: guardFailed (" ++ show bop ++ ")"
+               let vs = [v | Concrete (S.Version v) _ <- bop^.bufArgs]
+               mapM_ (tickFailedGuardCount (bop^.bufOp)) vs
                updateDbg failedGuards (+1)
                failure
             _ -> error "Rufous: internal: commitBop unreachable shadow error state"
@@ -128,15 +129,15 @@ commitBop bop = do
       failure = do
          case bop^.life of
             0 -> updateDbg diedOfOldAge (+1)
-            i -> abstractify bop{_life=i-1} >>= pushBuffer -- maybe just drop?
+            i -> pushBuffer bop{_life=i-1, _bufArgs=(bop^.bufAbstractArgs)}
          return False
-      cont = do
+      cont sh = do
          s <- use sig
          d <- use dug
          let nodeId = D.nextId d
-         shadow <- makeShadow bop
-         dug %= D.pushNew (bop^.bufOp) (dugArgs bop) shadow
+         dug %= D.pushNew (bop^.bufOp) (dugArgs bop) sh
          nodeCounts %= M.insert nodeId 0
+         failedApplicationCount %= M.insert nodeId 0
          prof <- use profile
          alive <- Rnd.genBool (1 - prof^.P.mortality)
          if bop^.bufOp^.S.opCategory /= S.Observer && alive then do
@@ -198,11 +199,6 @@ commitEphemeral (S.NonVersion _) = error "commitEphemeral :: unexpected Non-Vers
 commitEphemeral (S.Version v) = do
    living %= LSt.unuse v
 
-abstractify :: BufferedOperation -> GenState BufferedOperation
-abstractify bop = do
-   args <- sequence $ genAbstractArgs (bop^.bufOp)
-   return bop{_bufArgs=args}
-
 dugArgs :: BufferedOperation -> [D.DUGArg]
 dugArgs bop = [a | Concrete a _ <- bop^.bufArgs]
 
@@ -220,7 +216,7 @@ runShadow bop = do
    let name = o^.S.opName
    let Just shadowImpl = s^.S.shadowImpl
    let Just (_, implt) = shadowImpl^.S.implOperations^.at name
-   shadowDyn <- makeShadow bop
+   let Just shadowDyn = bop^.bufShadow
    return $ unsafePerformIO $ R.runDynCell s o shadowImpl undefined implt shadowDyn Nothing
 
 
@@ -232,22 +228,10 @@ tryFillNVAs :: BufferedOperation -> GenState ()
 tryFillNVAs bop = do
       args <- sequence $ map (trySatisfyNVArg) (bop^.bufArgs)
       let bop' = bop{_bufArgs=args}
-      result <- runShadow bop'
-      case result of
-         R.RunSuccess _ -> pushBuffer bop'
-         R.RunExcept R.NotImplemented -> pushBuffer bop'
-         R.RunExcept R.GuardFailed -> do
-            -- record for each Version that it failed for this arg.
-            -- and for versions that reached a threshold, don't try those
-            -- Versions again for this operation
-            let vs = [v | Concrete (S.Version v) _ <- bop^.bufArgs]
-            mapM_ (tickFailedGuardCount (bop^.bufOp)) vs
-            pushBuffer bop
-         R.RunTypeMismatch -> error "Rufous: internal: shadow type mismatch"
-         _ -> error "Rufous: internal: tryFillNVAs unreachable shadow error state"
+      pushBuffer bop'
 
 -- | For a given nodeId increment its failedApplicationCount
--- and if it's reached the treshhold, remove it from this operation's
+-- and if it's reached the threshold, remove it from this operation's
 -- living set
 tickFailedGuardCount :: S.Operation -> Int -> GenState ()
 tickFailedGuardCount op n = do

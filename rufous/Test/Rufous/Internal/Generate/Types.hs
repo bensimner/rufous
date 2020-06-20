@@ -7,8 +7,9 @@ import System.IO.Unsafe
 import Control.Lens hiding ((|>))
 import System.Random (StdGen, mkStdGen)
 
+import Data.Dynamic (Dynamic)
+
 import qualified Data.Sequence as Sq
-import qualified Data.Set as St
 import qualified Data.Map as M
 
 import qualified Test.Rufous.Options as Opt
@@ -35,9 +36,11 @@ data BufferedArg =
 -- as well as the current set of decided/undecided arguments.
 data BufferedOperation =
    BufferedOperation
-      { _bufOp :: S.Operation
+      { _bufId :: Int
+      , _bufOp :: S.Operation
       , _bufArgs :: [BufferedArg]
       , _life :: Int
+      , _bufShadow :: Maybe Dynamic
       }
    deriving (Show)
 makeLenses ''BufferedOperation
