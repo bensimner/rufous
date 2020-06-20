@@ -2,6 +2,7 @@
 module Test.Rufous.Options
    ( RufousOptions(..)
    , OutputOptions(..)
+   , GenOptions(..)
 
    -- | Aggregation Options
    , AggregatorType(..)
@@ -71,7 +72,8 @@ data RufousOptions =
       -- e.g. graphviz for each DUG,  progress bars etc
       , outputOptions :: OutputOptions
 
-      -- | Unused
+      -- | Options for tweaking the generation algorithm
+      -- e.g. when to give up on guards, whether to evaluate the shadow etc
       , genOptions :: GenOptions
 
       -- | After running the DUGs and collecting timing info
@@ -104,7 +106,14 @@ data OutputOptions =
    deriving (Show)
 
 data GenOptions =
-   GenOptions
+   GenOptions {
+      -- | whether to evaluate the shadow during generation
+      -- without this the generated DUG might have invalid applications (e.g. `head []`)
+        genEvalShadow :: Bool
+
+      -- | how many attempts to satisfy a guard before giving up on that node
+      , genFailGuardTimeout :: Int
+      }
    deriving (Show)
 
 optValue :: (RufousOptions -> Bool) -> (OutputOptions -> a) -> a -> RufousOptions -> a
@@ -149,7 +158,11 @@ normalize opt = opt{verbosity=newLogLevel, info=enableInfo, debug=enableDebug, v
 
 {- Default Options -}
 genArgs :: GenOptions
-genArgs = GenOptions
+genArgs =
+   GenOptions
+      { genEvalShadow = True
+      , genFailGuardTimeout = 10
+      }
 
 logArgs :: OutputOptions
 logArgs =

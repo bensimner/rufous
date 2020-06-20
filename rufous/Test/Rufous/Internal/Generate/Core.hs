@@ -14,6 +14,7 @@ import qualified Data.Set as St
 import qualified Test.Rufous.Signature as S
 import qualified Test.Rufous.Run as R
 import qualified Test.Rufous.DUG as D
+import qualified Test.Rufous.Options as Opt
 import qualified Test.Rufous.Profile as P
 
 import Test.Rufous.Internal.Generate.Types
@@ -66,7 +67,7 @@ genBufferedOp = do
    args <- sequence $ genAbstractArgs o
    updateDbg inflatedOps (M.insertWith (+) (o^.S.opName) 1)
    bopId <- Rnd.genRandomR (1,100000)
-   return $ BufferedOperation bopId o args 100 Nothing -- TODO: load from options
+   return $ BufferedOperation bopId o args 100 Nothing args -- TODO: load from options
 
 genAbstractArgs :: S.Operation -> [GenState BufferedArg]
 genAbstractArgs o = genAbstractFromArgTy (o^.S.opName) <$> o^.S.opArgTypes
@@ -109,6 +110,13 @@ commitBop bop = do
          -- and re-use the same eval'd cell
          shadow <- makeShadow bop
 
+         evalShadow <- genOpt Opt.genEvalShadow
+         if not evalShadow then
+            cont shadow
+         else
+            checkShadow shadow
+   where
+      checkShadow shadow = do
          let bop' = bop{_bufShadow=Just shadow}
          result <- runShadow bop'
          case result of
@@ -125,7 +133,6 @@ commitBop bop = do
                updateDbg failedGuards (+1)
                failure
             _ -> error "Rufous: internal: commitBop unreachable shadow error state"
-   where
       failure = do
          case bop^.life of
             0 -> updateDbg diedOfOldAge (+1)
@@ -237,8 +244,9 @@ tickFailedGuardCount :: S.Operation -> Int -> GenState ()
 tickFailedGuardCount op n = do
    failedApplicationCount %= M.update (Just . (+1)) n
    counts <- use failedApplicationCount
-   if counts M.! n > 100 then do
-      debugTrace $ "tickFailedGuardCount [" ++ op^.S.opName ++ "]"
+   timeout <- genOpt Opt.genFailGuardTimeout
+   if counts M.! n > timeout then do
+      --debugTrace $ "tickFailedGuardCount [" ++ op^.S.opName ++ "]"
       killForOp op n
    else
       return ()

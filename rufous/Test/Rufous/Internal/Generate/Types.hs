@@ -5,7 +5,7 @@ import Control.Monad.State
 import System.IO.Unsafe
 
 import Control.Lens hiding ((|>))
-import System.Random (StdGen, mkStdGen)
+import System.Random (StdGen)
 
 import Data.Dynamic (Dynamic)
 
@@ -17,7 +17,6 @@ import qualified Test.Rufous.DUG as D
 import qualified Test.Rufous.Profile as P
 import qualified Test.Rufous.Signature as S
 
-import qualified Test.Rufous.Internal.Generate.MSet as MSt
 import qualified Test.Rufous.Internal.Generate.LivingSet as LSt
 
 import qualified Test.Rufous.Internal.Logger as Log
@@ -41,6 +40,7 @@ data BufferedOperation =
       , _bufArgs :: [BufferedArg]
       , _life :: Int
       , _bufShadow :: Maybe Dynamic
+      , _bufAbstractArgs :: [BufferedArg]
       }
    deriving (Show)
 makeLenses ''BufferedOperation
@@ -118,6 +118,11 @@ updateDbg m f = do
    if Opt.debug opts then
       dbg . m %= f
    else return ()
+
+genOpt :: (Opt.GenOptions -> a) -> GenState a
+genOpt f = do
+   opts <- use opt
+   return $ f (Opt.genOptions opts)
 
 -- using unsafePerformIO here rather than storing in the GenState
 -- means we don't need to keep thunks around for random debug messages
