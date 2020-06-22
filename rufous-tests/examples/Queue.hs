@@ -92,8 +92,8 @@ main :: IO ()
 main = mainWith
          args
             { signature=_Queue
-            , averageDugSizes=[10, 100]
-            , numberOfTests=5 -- number of DUGs to generate
+            , averageDugSizes=[10000]
+            , numberOfTests=50 -- number of DUGs to generate
 
             , info=True -- equivalent to saying verbosity=1
             , outputOptions=
@@ -102,3 +102,15 @@ main = mainWith
                   , dumpDUGDetail=2 -- show shadow in the graphviz output
                   }
             }
+
+{- EXAMPLE OUTPUT
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ #dugs | #versions | "empty" weight | "head" weight | "snoc" weight | "tail" weight | mortality |  pmf |  pof | Main.ListQueue | Main.BQueue | Main.RQueue
+~~~~~~~+~~~~~~~~~~~+~~~~~~~~~~~~~~~~+~~~~~~~~~~~~~~~+~~~~~~~~~~~~~~~+~~~~~~~~~~~~~~~+~~~~~~~~~~~+~~~~~~+~~~~~~+~~~~~~~~~~~~~~~~+~~~~~~~~~~~~~+~~~~~~~~~~~~~
+     7 |      6016 |           0.10 |          0.27 |          0.52 |          0.10 |      0.34 | 0.59 | 1.00 |          0.01s |       0.01s |    9.11e-3s
+    13 |        82 |           0.45 |          0.21 |          0.14 |          0.21 |      0.18 | 0.62 | 0.97 |       3.06e-5s |    3.27e-5s |    2.95e-5s
+    13 |       205 |           0.41 |          0.23 |          0.13 |          0.23 |      0.15 | 0.70 | 1.00 |       9.31e-5s |    7.51e-5s |    9.41e-5s
+     7 |      9063 |           0.39 |          0.20 |          0.18 |          0.23 |      0.21 | 0.64 | 1.00 |          0.01s |       0.05s |       0.10s
+    10 |      1673 |           0.27 |          0.23 |          0.21 |          0.29 |      0.22 | 0.66 | 1.00 |       1.89e-3s |    1.79e-3s |    2.18e-3s
+
+-}
