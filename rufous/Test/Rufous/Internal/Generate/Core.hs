@@ -82,7 +82,7 @@ tryDeflate :: GenState Bool
 tryDeflate = do
    updateDbg deflateSteps (+1)
    bops <- popBufferAll
-   bs <- sequence $ map tryDeflateBop bops
+   bs <- mapM tryDeflateBop bops
    if or bs then do -- if we successfully created any new versions
       _ <- tryDeflate    -- then loop to see if we can satisfy any more
       return True
@@ -153,12 +153,6 @@ commitBop bop = do
          commitDargs bop
          updateDbg committedOps (M.insertWith (+) (bop^.bufOp^.S.opName) 1)
          return True
-
-kill :: Int -> GenState ()
-kill n = do
-   updateDbg deadNodes (+1)
-   s <- use sig
-   living %= LSt.removeFromFrontier s n
 
 killForOp :: S.Operation -> Int -> GenState ()
 killForOp o n = do
@@ -255,7 +249,7 @@ tickFailedGuardCount op n = do
 -- then place it back on the buffer.
 trySatisfyAndPush :: BufferedOperation -> GenState ()
 trySatisfyAndPush bop = do
-      args <- sequence $ map (trySatisfyArg bop k) (bop^.bufArgs)
+      args <- mapM (trySatisfyArg bop k) (bop^.bufArgs)
       pushBuffer $ bop{_bufArgs=args}
    where k = bop^.bufOp^.S.opCategory
 
