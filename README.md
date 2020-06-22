@@ -33,13 +33,14 @@ Given an abstract data type as a Haskell typeclass, and a set of implementations
         delete :: Ord a => a -> q a -> q a
         lookupMin :: Ord a => q a -> Maybe a
 
-    -- the actual implementations we want to benchmark
+    -- the actual implementation we want to benchmark
     instance Set S.Set where
         empty = S.empty
         insert = S.insert
         delete = S.delete
         lookupMin = S.lookupMin
 
+    -- and another
     data SortedListSet a = SortedListSet [a]
         deriving (Show)
 
