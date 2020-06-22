@@ -157,11 +157,10 @@ runRufousOnProfiles opts s profiles = do
       Log.debug $ "These DUGs have the following extracted profiles:"
       mapM_ (print . D.extractProfile s) dugs
 
-   Opt.doIf Opt.verbose opts $ do
-      Opt.doIf (Opt.dumpDUGs . Opt.outputOptions) opts $ do
-         mapM_ (\d -> do
-            fname <- D.printDUGtoFile opts ("output/" ++ d^.D.name) d
-            Log.info $ "Produced " ++ fname) dugs
+   Opt.doIf (Opt.dumpDUGs . Opt.outputOptions) opts $ do
+      mapM_ (\d -> do
+         fname <- D.printDUGtoFile opts ("output/" ++ d^.D.name) d
+         Log.info $ "Produced " ++ fname) dugs
 
    case Opt.dugs opts of
       [] -> runRufousOnDugs opts s dugs
