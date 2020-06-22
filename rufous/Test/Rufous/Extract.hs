@@ -78,7 +78,7 @@ dugFromPartial s p = go (D.emptyDUG "extracted") (M.keys (partialNodes p))
       go d [] = d
       go d (i:is) =
          let (sop, dargs, dyn) = unwrapPartial s p i in
-         let d' = D.pushNew sop dargs dyn d in
+         let d' = D.pushNew sop dargs (Just dyn) d in
          go d' is
 
 -- | extract will take an action (usually `main`) and wrap it

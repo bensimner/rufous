@@ -17,12 +17,20 @@ import Test.Rufous.Internal.Generate.Core
 import Test.Rufous.Internal.Logger as Log
 
 precheck :: Opt.RufousOptions -> S.Signature -> P.Profile -> IO ()
-precheck _ s _ = do
+precheck opts s _ = do
    case s^.S.shadowImpl of
       Just _  -> return ()
-      Nothing -> fail $
-       "Rufous: could not find Shadow implementation for " ++ s^.S.signatureADTName
-       ++ ". A Shadow is required for DUG generation."
+      Nothing
+         | Opt.strict opts ->
+               fail $
+                  "Rufous: could not find Shadow implementation for " ++ s^.S.signatureADTName
+                  ++ ". A Shadow is required for DUG generation when strict=True."
+         -- | Opt.genEvalShadow (Opt.genOptions opts) ->
+         --       fail $
+         --          "Rufous: genEvalShadow=True, "
+         --          ++ "but no Shadow implementation was defined for " ++ s^.S.signatureADTName ++ "."
+         | otherwise ->
+               return ()
 
 -- | Generates a 'DUG' which conforms to a given Profile.
 generateDUG :: Opt.RufousOptions -> S.Signature -> P.Profile -> IO D.DUG

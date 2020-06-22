@@ -31,7 +31,11 @@ showNode n = show (n ^. nodeId) ++ "[label=\"" ++ nodeLabel n ++ "\"]"
 
 showNodeDetail :: S.Signature -> Node -> String
 showNodeDetail s n = show (n ^. nodeId) ++ "[label=\"" ++ nodeLabel n ++ " :: (" ++ shadowStr ++ ")\"]"
-   where shadowStr = R.nodeShow (n^.operation) (fromJust (s^.S.shadowImpl)) (n^.shadow)
+   where
+      shadowStr =
+         case n^.shadow of
+            Just d -> R.nodeShow (n^.operation) (fromJust (s^.S.shadowImpl)) d
+            _ -> "N/A"
 
 checkPath :: FilePath -> IO ()
 checkPath pth = do

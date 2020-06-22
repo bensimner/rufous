@@ -73,7 +73,7 @@ checkDugShadows s dug impl = collect <$> checks
          let Just valueDyn = n^.D.dyn
 
          -- extract the Shadow value
-         let shadowDyn = n^.D.shadow
+         let Just shadowDyn = n^.D.shadow
          let Just shImpl = s^.S.shadowImpl
          let Just (_, shadowIty) = shImpl ^. S.implOperations . at (n^.D.operation^.S.opName)
 
@@ -99,31 +99,9 @@ runOn s d impl = do
       _ <- observed
       t1 <- getCurrentTime
 
-      r <- checkDugShadows s runDUG impl
-      case r of
-         RunSuccess _ -> return $ Right (diffUTCTime t1 t0)
-         RunShadowFailure i n extrShow -> do
-            let versions = S.Version (n^.D.nodeId) : [S.Version v | S.Version v <- n^.D.args]
-            showVersions <- sequence $ map implNodeShow [v | S.Version v <- versions]
-            showShadows <- sequence $ map implNodeShowShadow [v | S.Version v <- versions]
-            --showExtractedShadows <- sequence $ map implNodeShowShadow [v | S.Version v <- versions]
-            return $ Left $ ResultFail $
-               unlines $
-                     [
-                     "shadow and extracted shadow did not match for node `" ++ DP.showNode n ++ "`"
-                     , "for implementation " ++ show i
-                     , "where versions: " ]
-                  ++ [" " ++ DP.showArg v ++ " = `" ++ ns ++ "`" | (v, ns) <- zip versions showVersions]
-                  ++ ["and shadows: "]
-                  ++ [" " ++ DP.showArg v ++ " = `" ++ ns ++ "`" | (v, ns) <- zip versions showShadows]
-                  ++ ["and extracted shadow: "]
-                  ++ [" " ++ DP.showVarName n ++ " = `" ++ extrShow ++ "`"]
-
-         -- These should never occur if using the TH splices
-         RunShadowTypeMismatch -> error "Rufous: internal: shadow type mismatch."
-         RunTypeMismatch -> error "Rufous: internal: type mismatch during shadow check."
-         RunExcept e -> error $  "Rufous: internal: " ++ show e
-
+      case s^.S.shadowImpl of
+         Just _ -> checkAllShadows t0 t1
+         Nothing -> cont t0 t1
    where
       runDUG = buildImplDUG s impl d
       observers = D.observers runDUG
@@ -141,6 +119,33 @@ runOn s d impl = do
             RunSuccess _ -> return (Just res)
             RunExcept NotImplemented -> return Nothing
             e -> error $ "Rufous: internal: " ++ show e
+      cont t0 t1 = do
+         return $ Right (diffUTCTime t1 t0)
+      checkAllShadows t0 t1 = do
+         r <- checkDugShadows s runDUG impl
+         case r of
+            RunSuccess _ -> cont t0 t1
+            RunShadowFailure i n extrShow -> do
+               let versions = S.Version (n^.D.nodeId) : [S.Version v | S.Version v <- n^.D.args]
+               showVersions <- sequence $ map implNodeShow [v | S.Version v <- versions]
+               showShadows <- sequence $ map implNodeShowShadow [v | S.Version v <- versions]
+               --showExtractedShadows <- sequence $ map implNodeShowShadow [v | S.Version v <- versions]
+               return $ Left $ ResultFail $
+                  unlines $
+                        [
+                        "shadow and extracted shadow did not match for node `" ++ DP.showNode n ++ "`"
+                        , "for implementation " ++ show i
+                        , "where versions: " ]
+                     ++ [" " ++ DP.showArg v ++ " = `" ++ ns ++ "`" | (v, ns) <- zip versions showVersions]
+                     ++ ["and shadows: "]
+                     ++ [" " ++ DP.showArg v ++ " = `" ++ ns ++ "`" | (v, ns) <- zip versions showShadows]
+                     ++ ["and extracted shadow: "]
+                     ++ [" " ++ DP.showVarName n ++ " = `" ++ extrShow ++ "`"]
+
+            -- These should never occur if using the TH splices
+            RunShadowTypeMismatch -> error "Rufous: internal: shadow type mismatch."
+            RunTypeMismatch -> error "Rufous: internal: type mismatch during shadow check."
+            RunExcept e -> error $  "Rufous: internal: " ++ show e
       -- below are for error handling
       implNodeShow :: Int -> IO String
       implNodeShow i =
@@ -166,7 +171,7 @@ runOn s d impl = do
                   Just m -> do
                      let n = (runDUG ^. D.operations) M.! i
                      -- we already evaluated the DUG so it better have Dynamic's for all of them ...
-                     let dyn = n ^. D.shadow
+                     let Just dyn = n ^. D.shadow
                      let o = n ^. D.operation ^. S.opName
                      let showDyn = m M.! o
                      r <- runDyn "" fromDynamic (showDyn `dynApp` dyn)
@@ -199,7 +204,7 @@ makeDynCell s impl d o args =
 
 makeShadowDynCell :: S.Signature -> S.Implementation -> D.DUG -> S.Operation -> [D.DUGArg] -> Dynamic
 makeShadowDynCell s impl d o args =
-   makeDynCellGen s impl d o args (\n -> n^.D.shadow)
+   makeDynCellGen s impl d o args (\n -> fromJust $ n^.D.shadow)
 
 makeDynCellGen :: S.Signature -> S.Implementation -> D.DUG -> S.Operation -> [D.DUGArg] -> (D.Node -> Dynamic) -> Dynamic
 makeDynCellGen _ impl d o args fn = dynResult f dynArgs
@@ -262,7 +267,7 @@ runDynCell s o i n (S.ImplType retT) d maybeShadow = result
       tryCheckShadowObs r' =
          case maybeShadow of
             Nothing -> return $ RunSuccess r'
-            _ -> checkShadowObs (n^.D.shadow) d r'
+            _ -> checkShadowObs (fromJust $ n^.D.shadow) d r'
 
       checkShadowObs :: Typeable b => Dynamic -> Dynamic -> b -> IO RunResult
       checkShadowObs shObservation observation ret = do

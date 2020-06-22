@@ -117,7 +117,7 @@ commitBop bop = do
             checkShadow shadow
    where
       checkShadow shadow = do
-         let bop' = bop{_bufShadow=Just shadow}
+         let bop' = bop{_bufShadow=shadow}
          result <- runShadow bop'
          case result of
             R.RunSuccess _ -> cont shadow
@@ -203,23 +203,30 @@ commitEphemeral (S.Version v) = do
 dugArgs :: BufferedOperation -> [D.DUGArg]
 dugArgs bop = [a | Concrete a _ <- bop^.bufArgs]
 
-makeShadow :: BufferedOperation -> GenState Dynamic
+makeShadow :: BufferedOperation -> GenState (Maybe Dynamic)
 makeShadow bop = do
    d <- use dug
    s <- use sig
-   let Just shadow = s^.S.shadowImpl
-   return $ R.makeShadowDynCell s shadow d (bop^.bufOp) (dugArgs bop)
+   case s^.S.shadowImpl of
+      Just shadow -> return $ Just $ R.makeShadowDynCell s shadow d (bop^.bufOp) (dugArgs bop)
+      Nothing     -> return $ Nothing
 
+
+-- | run the bop's shadow and see what happens
+-- unsafe!  do not apply this on buffered operations
+-- who have no shadows.
 runShadow :: BufferedOperation -> GenState (R.RunResult)
 runShadow bop = do
    s <- use sig
    let o = bop^.bufOp
    let name = o^.S.opName
-   let Just shadowImpl = s^.S.shadowImpl
-   let Just (_, implt) = shadowImpl^.S.implOperations^.at name
-   let Just shadowDyn = bop^.bufShadow
-   return $ unsafePerformIO $ R.runDynCell s o shadowImpl undefined implt shadowDyn Nothing
-
+   case bop^.bufShadow of
+      Just shadowDyn -> do
+         let Just shadowImpl = s^.S.shadowImpl
+         let Just (_, implt) = shadowImpl^.S.implOperations^.at name
+         return $ unsafePerformIO $ R.runDynCell s o shadowImpl undefined implt shadowDyn Nothing
+      Nothing ->
+         return $ R.RunSuccess ()
 
 -- | Satisfying an NVA is non-trivial, we assume we've already fixed version arguments
 -- all that's left is to generate some non-version ones.  However an arbtirary set of non-version arguments

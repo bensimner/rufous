@@ -124,6 +124,11 @@ genOpt f = do
    opts <- use opt
    return $ f (Opt.genOptions opts)
 
+rufOpt :: (Opt.RufousOptions -> a) -> GenState a
+rufOpt f = do
+   opts <- use opt
+   return $ f opts
+
 -- using unsafePerformIO here rather than storing in the GenState
 -- means we don't need to keep thunks around for random debug messages
 -- they're not part of the computation anyway...

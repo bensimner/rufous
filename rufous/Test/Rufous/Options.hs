@@ -50,6 +50,9 @@ data RufousOptions =
       , numberOfRuns :: Int
       , randomSeed :: Int
 
+      -- | whether to strictly check for shadows etc
+      , strict :: Bool
+
       -- | Logging output
       -- Rufous has 4 output types:
       --  NORMAL, INFO, VERBOSE, DEBUG
@@ -185,6 +188,7 @@ args =
       , numberOfTests=100
       , numberOfRuns=10
       , randomSeed=(-1)
+      , strict=False
       , info=False
       , verbose=False
       , debug=False

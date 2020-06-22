@@ -18,7 +18,7 @@ data Node =
       { _nodeId :: Int  -- Invariant: (DUG^.operations ! i)^.nodeId == i
       , _operation :: S.Operation
       , _args :: [DUGArg]  -- Version (-1) => undefined
-      , _shadow :: Dynamic -- the shadow
+      , _shadow :: Maybe Dynamic -- the shadow
       , _dyn :: Maybe Dynamic    -- the actual underlying value
       }
 makeLenses ''Node
@@ -70,15 +70,15 @@ nextId :: DUG -> Int
 nextId d = 1 + M.size (d^.operations)
 
 -- | Create and insert a new Node
-pushNew :: S.Operation -> [DUGArg] -> Dynamic -> DUG -> DUG
-pushNew o dargs dyn dug =
+pushNew :: S.Operation -> [DUGArg] -> Maybe Dynamic -> DUG -> DUG
+pushNew o dargs shadowDyn dug =
       dug & operations . at newId ?~ n
           & reverseArgs %~ pushRevArgs newId dargs
           & reverseArgs %~ M.insert newId MSt.empty
           & dugSize .~ newId
    where
       newId = nextId dug
-      n = Node newId o dargs dyn Nothing
+      n = Node newId o dargs shadowDyn Nothing
 
 pushRevArgs :: Int -> [DUGArg] -> M.Map Int (MSt.MSet Int) -> M.Map Int (MSt.MSet Int)
 pushRevArgs nId dargs m = go dargs m
