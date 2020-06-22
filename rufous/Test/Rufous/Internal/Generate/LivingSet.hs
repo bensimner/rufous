@@ -41,6 +41,10 @@ data LivingSet =
         , infantUnused :: St.Set Int
         , infantPerOpTotal :: M.Map String (St.Set Int)
         , infantPerOpUnused :: M.Map String (St.Set Int)
+
+        -- | ordered frontier
+        -- on a commit then remove the oldest from this list
+        , age :: [Int]
         }
 
 size :: LivingSet -> Int
@@ -59,7 +63,7 @@ imageInf :: String -> LivingSet -> St.Set Int
 imageInf o liv = (infantPerOpTotal liv) M.! o
 
 useInf :: Int -> LivingSet -> LivingSet
-useInf n (Living tot totUnused op opUnused inf infUnused infOp infOpUnused) = Living tot' totUnused' op' opUnused' inf' infUnused' infOp' infOpUnused'
+useInf n (Living tot totUnused op opUnused inf infUnused infOp infOpUnused age) = Living tot' totUnused' op' opUnused' inf' infUnused' infOp' infOpUnused' age
     where
         tot' = tot
         totUnused' = St.delete n totUnused
@@ -71,16 +75,19 @@ useInf n (Living tot totUnused op opUnused inf infUnused infOp infOpUnused) = Li
         infOpUnused' = M.map (St.delete n) infOpUnused
 
 usePers :: Int -> LivingSet -> LivingSet
-usePers n (Living tot totUnused op opUnused inf infUnused infOp infOpUnused) = Living tot' totUnused' op' opUnused' inf infUnused infOp infOpUnused
+usePers n (Living tot totUnused op opUnused inf infUnused infOp infOpUnused age) = Living tot' totUnused' op' opUnused' inf infUnused infOp infOpUnused age
     where
         tot' = tot
         totUnused' = St.delete n totUnused
         op' = op
         opUnused' = M.map (St.delete n) opUnused
 
--- | on committing a node n,  we can add it back to the heuristic set of preferential picks
+timeToDie :: Maybe Int -> Bool
+timeToDie Nothing = True
+timeToDie (Just n) = n < 100
+
 unuse :: Int -> LivingSet -> LivingSet
-unuse n (Living tot totUnused op opUnused inf infUnused infOp infOpUnused) = Living tot' totUnused' op' opUnused' inf' infUnused' infOp' infOpUnused'
+unuse n (Living tot totUnused op opUnused inf infUnused infOp infOpUnused age) = Living tot' totUnused' op' opUnused' inf' infUnused' infOp' infOpUnused' age'
     where
         tot' = tot
         totUnused' = St.insert n totUnused
@@ -91,6 +98,7 @@ unuse n (Living tot totUnused op opUnused inf infUnused infOp infOpUnused) = Liv
         infUnused' = St.delete n infUnused
         infOp' = M.map (St.delete n) infOp
         infOpUnused' = M.map (St.delete n) infOpUnused
+        age' = age
 
 member :: String -> Int -> LivingSet -> Bool
 member o n liv = n `St.member` (perOpTotal liv M.! o)
@@ -99,13 +107,13 @@ memberAll :: Int -> LivingSet -> Bool
 memberAll s liv = s `St.member` (total liv)
 
 empty :: S.Signature -> LivingSet
-empty s = Living empSet empSet empMap empMap empSet empSet empMap empMap
+empty s = Living empSet empSet empMap empMap empSet empSet empMap empMap []
     where ops = M.keys $ s^.S.operations
           empMap = M.fromList [(o, St.empty) | o <- ops]
           empSet = St.empty
 
 insert :: String -> Int -> LivingSet -> LivingSet
-insert o n (Living tot totUnused op opUnused inf infUnused infOp infOpUnused) = Living tot' totUnused' op' opUnused' inf' infUnused' infOp' infOpUnused'
+insert o n (Living tot totUnused op opUnused inf infUnused infOp infOpUnused age) = Living tot' totUnused' op' opUnused' inf' infUnused' infOp' infOpUnused' age
     where
         tot' = St.insert n tot
         totUnused' = St.insert n totUnused
@@ -119,7 +127,7 @@ insert o n (Living tot totUnused op opUnused inf infUnused infOp infOpUnused) = 
 
 -- | when removing a node from the frontier but only for a particular operation
 deleteOp :: String -> Int -> LivingSet -> LivingSet
-deleteOp o n (Living tot totUnused op opUnused inf infUnused infOp infOpUnused) = Living tot' totUnused' op' opUnused' inf' infUnused' infOp' infOpUnused'
+deleteOp o n (Living tot totUnused op opUnused inf infUnused infOp infOpUnused age) = Living tot' totUnused' op' opUnused' inf' infUnused' infOp' infOpUnused' age
     where
         tot' = tot
         totUnused' = St.insert n totUnused
@@ -134,9 +142,34 @@ concat :: LivingSet -> St.Set Int
 concat liv = total liv
 
 addNewInfant :: S.Signature -> Int -> LivingSet -> LivingSet
-addNewInfant s n liv = foldl' (\v o -> insert o n v) liv ops
+addNewInfant s n liv =
+        if size liv'' > 100 then
+            removeOldest liv''
+        else
+            liv''
     where ops = M.keys $ s^.S.operations
+          liv' = foldl' (\v o -> insert o n v) liv ops
+          liv'' = liv'{age=n:age liv'}
+
+
+removeOldest :: LivingSet -> LivingSet
+removeOldest liv = liv'{age=age'}
+    where part [x] ys = (x, ys)
+          part (x:xs) ys = part (xs) (x:ys)
+          part [] _ = error "Rufous: internal: removeOldest: empty frontier?"
+          (oldest, age') = part (age liv) []
+          liv' = removeFromFrontier oldest liv
+
 
 -- | delete a node from the frontier entirely
-removeFromFrontier :: S.Signature -> Int -> LivingSet -> LivingSet
-removeFromFrontier s n liv = undefined
+removeFromFrontier :: Int -> LivingSet -> LivingSet
+removeFromFrontier n (Living tot totUnused op opUnused inf infUnused infOp infOpUnused age) = Living tot' totUnused' op' opUnused' inf' infUnused' infOp' infOpUnused' age
+    where
+        tot' = St.delete n tot
+        totUnused' = St.delete n totUnused
+        op' = M.map (St.delete n) op
+        opUnused' = M.map (St.delete n) opUnused
+        inf' = St.delete n inf
+        infUnused' = St.delete n infUnused
+        infOp' = M.map (St.delete n) infOp
+        infOpUnused' = M.map (St.delete n) infOpUnused
