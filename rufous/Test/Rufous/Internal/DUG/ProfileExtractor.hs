@@ -47,8 +47,12 @@ persistents s d = M.fromList [(o, persistent o) | o <- opNames]
          allNodesOp o = [n | n <- nodes d, n^.operation^.S.opName == o]
          persistent o = realLen [() | (n,True) <- allNodes, n^.operation^.S.opName == o] `guardedDiv` (realLen (allNodesOp o))
          realLen = fromIntegral . length
+
 isPersistent :: Node -> DUG -> Bool
-isPersistent node d = and [n >= earliest | m <- mutators]
+isPersistent node d =
+   if null mutators
+      then True
+      else n > earliest
    where n = node^.nodeId
          indexes = edgesFrom d node
          mutators = [i | i <- indexes, isMutator (nodeAt i d)]
