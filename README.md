@@ -17,29 +17,44 @@ To install and run the Queue example:
 Usage
 -----
 
-(See https://github.com/bensimner/rufous/tree/master/rufous-tests/examples/ for full examples)
+(See https://github.com/bensimner/rufous/tree/master/examples/ for some simple examples)
 
 Given an abstract data type as a Haskell typeclass, and a set of implementations, generate and run a set of example usages and compute the on-average "best" structure:
 
+    {-# LANGUAGE TemplateHaskell #-}
     import Test.Rufous
 
-    class Queue q where
-        empty :: q a
-        snoc :: a -> q a
-        head :: q a -> a
-        tail :: q a -> q a
+    import qualified Data.List as L
+    import qualified Data.Set as S
 
-    newtype ListQueue a = ListQueue [a]
-    instance Queue ListQueue where
-        empty = ListQueue []
-        snoc x (ListQueue xs) = ListQueue (xs ++ [x])
-        head (ListQueue (x:_)) = x
-        tail (ListQueue (_:xs)) = xs
+    class Set q where
+        empty :: Ord a => q a
+        insert :: Ord a => a -> q a -> q a
+        delete :: Ord a => a -> q a -> q a
+        lookupMin :: Ord a => q a -> Maybe a
 
-    -- Generate Queue spec
-    makeADTSignature ''Queue
+    -- the actual implementations we want to benchmark
+    instance Set S.Set where
+        empty = S.empty
+        insert = S.insert
+        delete = S.delete
+        lookupMin = S.lookupMin
 
-    main = mainWith args{signature=_Queue}
+    data SortedListSet a = SortedListSet [a]
+        deriving (Show)
+
+    instance Set SortedListSet where
+        empty = SortedListSet []
+        insert x (SortedListSet xs) = SortedListSet (L.sort (L.nub (x:xs)))
+        delete x (SortedListSet xs) = SortedListSet (L.delete x xs)
+        lookupMin (SortedListSet []) = Nothing
+        lookupMin (SortedListSet (x:_)) = Just x
+
+    -- Generate Set spec
+    makeADTSignature ''Set
+
+    main :: IO ()
+    main = mainWith args{signature=_Set}
 
 Output
 ------
@@ -49,12 +64,11 @@ For example, tests of different sizes, tests with different proportions of each 
 
 Then all these results are aggregated together into a summary table.
 
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     #tests | #versions | "empty" weight | "head" weight | "snoc" weight | "tail" weight | mortality |  pmf |  pof |    Main.RQueue |    Main.BQueue | Main.ListQueue
-    ~~~~~~~~+~~~~~~~~~~~+~~~~~~~~~~~~~~~~+~~~~~~~~~~~~~~~+~~~~~~~~~~~~~~~+~~~~~~~~~~~~~~~+~~~~~~~~~~~+~~~~~~+~~~~~~+~~~~~~~~~~~~~~~~+~~~~~~~~~~~~~~~~+~~~~~~~~~~~~~~~~
-          1 |        62 |           0.93 |          0.00 |          0.03 |          0.03 |      0.06 | 0.33 | 0.00 |             0s |             0s |             0s
-          2 |       163 |           0.42 |          0.12 |          0.29 |          0.17 |      0.45 | 0.17 | 0.03 |  0.0000151105s |  0.0000134035s |  0.0000127935s
-          3 |       564 |           0.36 |          0.03 |          0.33 |          0.28 |      0.60 | 0.08 | 0.01 | 0.00002189525s | 0.00002418875s |   0.000017407s
-          2 |        17 |           0.81 |          0.03 |          0.08 |          0.08 |      0.24 | 0.12 | 0.00 |   0.000001196s |   0.000000812s |   0.000000692s
-          2 |      1465 |           0.37 |          0.12 |          0.34 |          0.17 |      0.56 | 0.04 | 0.17 |   0.000119765s |  0.0001071205s |   0.000103229s
-
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #dugs | #versions | "delete" weight | "empty" weight | "insert" weight | "lookupMin" weight | mortality |  pmf |  pof | Main.SortedListSet | Data.Set.Internal.Set
+    ~~~~~~~+~~~~~~~~~~~+~~~~~~~~~~~~~~~~~+~~~~~~~~~~~~~~~~+~~~~~~~~~~~~~~~~~+~~~~~~~~~~~~~~~~~~~~+~~~~~~~~~~~+~~~~~~+~~~~~~+~~~~~~~~~~~~~~~~~~~~+~~~~~~~~~~~~~~~~~~~~~~~
+        13 |     10471 |            0.29 |           0.15 |            0.39 |               0.18 |      0.36 | 0.58 | 1.00 |              0.03s |                 0.02s
+        11 |       613 |            0.16 |           0.38 |            0.30 |               0.16 |      0.32 | 0.66 | 1.00 |           6.30e-4s |              7.17e-4s
+        17 |      1866 |            0.20 |           0.13 |            0.37 |               0.30 |      0.43 | 0.42 | 1.00 |           4.51e-3s |              5.09e-3s
+        53 |       117 |            0.17 |           0.26 |            0.42 |               0.15 |      0.45 | 0.49 | 0.96 |           9.16e-5s |              8.23e-5s
+        6 |      3794 |            0.29 |           0.18 |            0.35 |               0.17 |      0.38 | 0.56 | 1.00 |           7.71e-3s |              7.39e-3s

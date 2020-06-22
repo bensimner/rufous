@@ -41,6 +41,15 @@ executable rufous-tests-example-list
   default-language:    Haskell2010
   ghc-options:         -Wall -O2
 
+executable rufous-tests-example-set
+  main-is:             Set.hs
+  build-depends:       base
+                       , rufous
+                       , containers
+  hs-source-dirs:      examples
+  default-language:    Haskell2010
+  ghc-options:         -Wall -O2
+
 executable rufous-tests-example-map
   main-is:             Map.hs
   build-depends:       base
