@@ -30,7 +30,7 @@ instance Show Node where
 -- | Info related to the way this DUG was generated.
 data DUGGenerationInfo =
    GInfo
-      { _idx :: Integer  -- index 0, 1, 2, ... of generated DUG
+      { _idx :: Int  -- index 0, 1, 2, ... of generated DUG
       , _targetProfile :: P.Profile -- the generated or supplied target profile
       }
    deriving (Show)

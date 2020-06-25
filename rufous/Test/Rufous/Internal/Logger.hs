@@ -13,9 +13,11 @@ module Test.Rufous.Internal.Logger
     -- a mini progress bar
     , initProgress
     , initProgressWithMsg
+    , initProgressAll
     , initUnboundedProgressWithMsg
     , updateProgress
     , updateProgressMsg
+    , progressBarNextSegment
     , endProgress
 
     -- | initial update of global IORef (see below)
@@ -26,6 +28,8 @@ where
 import Prelude hiding (log)
 
 import Data.Time.Clock
+
+import Data.List
 
 import System.IO
 import System.IO.Unsafe (unsafePerformIO)
@@ -102,7 +106,7 @@ outPutLn s = do
     hPutStr stdout ("\r" ++ s)
     pg <- Ref.readIORef _progressBar
     case pg of
-        Just (_, _, _, _, k) -> hPutStr stdout (replicate (k - length s) ' ')
+        Just prog -> hPutStr stdout (replicate (progLastLength prog - length s) ' ')
         Nothing -> return ()
     hPutStr stdout "\n"
     refreshProgress
@@ -112,7 +116,7 @@ debugPutLn s = do
     hPutStr stderr ("\r" ++ s)
     pg <- Ref.readIORef _progressBar
     case pg of
-        Just (_, _, _, _, k) -> hPutStr stderr (replicate (k - length s) ' ')
+        Just prog -> hPutStr stderr (replicate (progLastLength prog - length s) ' ')
         Nothing -> return ()
     hPutStr stderr "\n"
     refreshProgress
@@ -121,63 +125,107 @@ debugPutLn s = do
 progressRefreshRate :: Rational
 progressRefreshRate = 1/5
 
+progressBarLength :: Int
+progressBarLength = 40
+
 ifShowProgress :: Opt.RufousOptions -> Bool
 ifShowProgress = Opt.optFlag ((>= 1) . Opt.verbosity) Opt.showProgressBars
 
-_progressBar :: Ref.IORef (Maybe (UTCTime, Int, Maybe Int, String, Int))
+-- | a Progress bar is a collection of segments that fill in order
+-- some segments may be unbounded and require
+data Progress =
+    Progress {
+          progLastUpdate :: UTCTime
+        , progCurrentMessage :: String
+        , progPartitions :: Int
+        , progPartitionWeights :: [Int]
+        , progPartitionMax :: [Maybe Int]
+        , progCurrentPartition :: Int
+        , progCurrentProgress :: Int
+        , progLastLength :: Int
+    }
+    deriving (Show)
+
+_progressBar :: Ref.IORef (Maybe Progress)
 {-# NOINLINE _progressBar #-}
 _progressBar = unsafePerformIO $ Ref.newIORef Nothing
 
 initProgress :: Int -> IO ()
 initProgress n = doIfIO ifShowProgress $ do
     ctime <- getCurrentTime
-    Ref.writeIORef _progressBar (Just (ctime, 0, Just n, "", 0))
+    Ref.writeIORef _progressBar (Just $ Progress ctime "" 1 [1] [Just n] 0 0 0)
+
+initProgressAll :: [Maybe Int] -> [Int] -> String -> IO ()
+initProgressAll ns ws msg = doIfIO ifShowProgress $ do
+    ctime <- getCurrentTime
+    Ref.writeIORef _progressBar (Just $ Progress ctime msg (length ns) ws ns 0 0 0)
 
 initProgressWithMsg :: Int -> String -> IO ()
 initProgressWithMsg n msg = doIfIO ifShowProgress $ do
     ctime <- getCurrentTime
-    Ref.writeIORef _progressBar (Just (ctime, 0, Just n, msg, 0))
+    Ref.writeIORef _progressBar (Just $ Progress ctime msg 1 [1] [Just n] 0 0 0)
 
 initUnboundedProgressWithMsg :: String -> IO ()
 initUnboundedProgressWithMsg msg = doIfIO ifShowProgress $ do
     ctime <- getCurrentTime
-    Ref.writeIORef _progressBar (Just (ctime, 0, Nothing, msg, 0))
+    Ref.writeIORef _progressBar (Just $ Progress ctime msg 1 [1] [Nothing] 0 0 0)
+
+makeSegment :: Int -> Int -> Int -> Int -> Maybe Int -> String
+makeSegment segmentLength currentSegment thisSegment progress Nothing | currentSegment == thisSegment = ljust (replicate len '*')
+    where len = progress `mod` 3
+          ljust s = s ++ replicate (segmentLength - length s) '.'
+
+makeSegment segmentLength currentSegment thisSegment progress (Just maxProgress) | currentSegment == thisSegment  = ljust (replicate len '#')
+    where ljust s = s ++ replicate (segmentLength - length s) '.'
+          perc :: Float
+          perc = fromIntegral progress / fromIntegral maxProgress
+          len = round $ fromIntegral segmentLength * perc
+
+makeSegment segmentLength currentSegment thisSegment _ _ | currentSegment < thisSegment = replicate segmentLength '.'
+makeSegment segmentLength currentSegment thisSegment _ _ | currentSegment > thisSegment = replicate segmentLength '#'
+
+makeProgressSegments :: Int -> Int -> [Int] -> [Maybe Int] -> String
+makeProgressSegments currentSegment currentProgress weights maxProgresses = "[" ++ intercalate " " segments ++ "]"
+    where
+        segmentLength i = round $ (fromIntegral progressBarLength :: Float) * (fromIntegral (weights !! i) / fromIntegral (sum weights))
+        mkSegment i s = makeSegment (segmentLength i) currentSegment i currentProgress s
+        segments = map (\(i, s) -> mkSegment i s) (zip [0..] maxProgresses)
 
 refreshProgress :: IO ()
 refreshProgress = doIfIO ifShowProgress $ do
     pg <- Ref.readIORef _progressBar
     case pg of
-        Just (_, i, maybe_maxi, msg, k) -> do
-            let bar =
-                 (case maybe_maxi of
-                    Just maxi ->
-                        let perc :: Float; perc = fromIntegral i / fromIntegral maxi in
-                        let percInt :: Int; percInt = round $ 100 * perc in
-                        let len = round $ 20 * perc in
-                        let progress = replicate len '#' ++ replicate (20-len) ' ' in
-                        "[" ++ progress ++ "] " ++ show percInt ++ "% " ++ msg
-                    Nothing ->
-                        let flick = flickerAnim i in
-                        "[" ++ flick ++ "] " ++ show i ++ " " ++ msg)
-            hPutStr stderr $ "\r" ++ bar ++ replicate (k - length bar) ' '
+        Just prog -> do
+            let k = progLastLength prog
+            let bar = makeProgressSegments (progCurrentPartition prog) (progCurrentProgress prog) (progPartitionWeights prog) (progPartitionMax prog) ++ " " ++ progCurrentMessage prog
+            hPutStr stderr $ "\r" ++ bar ++ replicate (k - length bar) '#'
             hFlush stderr
             ctime <- getCurrentTime
-            Ref.writeIORef _progressBar (Just (ctime, i, maybe_maxi, msg, length bar))
+            Ref.writeIORef _progressBar (Just (prog{progLastUpdate=ctime, progLastLength=length bar}))
             return ()
         Nothing -> return ()
 
-flickerAnim :: Int -> String
-flickerAnim i | i `mod` 3 == 0 = "/"
-flickerAnim i | i `mod` 3 == 1 = "|"
-flickerAnim i | i `mod` 3 == 2 = "\\"
-flickerAnim _ = error "unreachable"
+nextSegment :: Progress -> Progress
+nextSegment prog = prog{progCurrentProgress=0, progCurrentPartition=1+progCurrentPartition prog}
+
+progressBarNextSegment :: IO ()
+progressBarNextSegment = doIfIO ifShowProgress $ do
+    Just prog <- Ref.readIORef _progressBar
+    Ref.writeIORef _progressBar (Just $ nextSegment prog)
+
+updateProgressBar :: Progress -> Int -> Progress
+updateProgressBar p@(Progress _ _ _ _ parts current progress _) di =
+    case (parts !! current) of
+        Just i | progress+di >= i -> nextSegment p
+        Just _ -> p{progCurrentProgress=progress + di}
+        Nothing -> p{progCurrentProgress=progress + di}
 
 updateProgress :: Int -> IO ()
 updateProgress di = doIfIO ifShowProgress $ do
-    Just (oldtime, c, maxi, msg, k) <- Ref.readIORef _progressBar
+    Just prog <- Ref.readIORef _progressBar
+    let oldtime = progLastUpdate prog
     ctime <- getCurrentTime
-    let i = c+di
-    Ref.writeIORef _progressBar (Just (oldtime, i, maxi, msg, k))
+    Ref.writeIORef _progressBar (Just $ updateProgressBar prog di)
 
     if toRational (diffUTCTime ctime oldtime) > progressRefreshRate then
         refreshProgress
@@ -186,10 +234,10 @@ updateProgress di = doIfIO ifShowProgress $ do
 
 updateProgressMsg :: String -> IO ()
 updateProgressMsg m = doIfIO ifShowProgress $ do
-    Just (oldtime, c, maxi, _, k) <- Ref.readIORef _progressBar
+    Just prog <- Ref.readIORef _progressBar
+    let oldtime = progLastUpdate prog
     ctime <- getCurrentTime
-
-    Ref.writeIORef _progressBar (Just (oldtime, c, maxi, m, k))
+    Ref.writeIORef _progressBar (Just $ prog{progCurrentMessage=m})
 
     if toRational (diffUTCTime ctime oldtime) > progressRefreshRate then
         refreshProgress
@@ -198,10 +246,8 @@ updateProgressMsg m = doIfIO ifShowProgress $ do
 
 endProgress :: IO ()
 endProgress = doIfIO ifShowProgress $ do
-    Just (t, i, maxi, msg, k) <- Ref.readIORef _progressBar
-    case maxi of
-        Just m -> Ref.writeIORef _progressBar (Just (t, m, Just m, msg, k))
-        Nothing -> Ref.writeIORef _progressBar (Just (t, i, Nothing, msg, k))
+    Just prog <- Ref.readIORef _progressBar
+    Ref.writeIORef _progressBar (Just prog{progCurrentPartition=1 + progPartitions prog})
     refreshProgress
     Ref.writeIORef _progressBar Nothing
     hPutStrLn stderr ""

@@ -28,7 +28,7 @@ makeTable s rs = T.Table (makeHeader s) (map (\r -> makeRow s r) rs)
 
 makeHeader :: S.Signature -> [String]
 makeHeader s = ["#dugs"]
-               ++ ["#versions"]
+               ++ ["size"]
                ++ [show opName ++ " weight" | opName <- M.keys (s ^. S.operations)]
                ++ ["mortality", "pmf", "pof"]
                ++ [i ^. S.implName | i <- s^.S.implementations]

@@ -32,7 +32,7 @@ run s d nullImpl impls i = do
    !results <- mapM (\_ -> runOnDUG s d nullImpl impls) [1..i]
    let extractedProfile = PrExtract.extractProfile s d
    let opCounts = M.empty
-   return $ Result d extractedProfile opCounts (foldl1 mergeDUGTimeInfos results) results
+   return $ Result extractedProfile opCounts (foldl1 mergeDUGTimeInfos results) results
 
 -- | Because we might want to time the same DUG multiple times over
 -- we have a function that given a (blank) DUG and an implementation
@@ -47,6 +47,7 @@ runOnDUG s d nullImpl impls = do
       Right nullT -> do
          Log.debug $ "running " ++ d^.D.name ++ ", Null time =" ++ show nullT
          implTRuns <- mapM (runOn s d) impls
+         Log.updateProgress 1
          case Rs.splitResultFailures implTRuns of
             Left f -> failOut f
             Right implTs -> do
@@ -114,7 +115,7 @@ runOn s d impl = do
          let Just valueDyn = n^.D.dyn
          -- run the dynamic cell and time it
          res <- runDynCell s o impl n ity valueDyn Nothing
-         Log.updateProgress 1
+
          case res of
             RunSuccess _ -> return (Just res)
             RunExcept NotImplemented -> return Nothing

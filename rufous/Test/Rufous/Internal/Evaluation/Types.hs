@@ -67,8 +67,7 @@ makeLenses ''DUGTimeInfo
 -- | Information from many executions of the same DUG
 data Result =
    Result
-      { _resultDUG :: D.DUG
-      , _resultProfile :: P.Profile
+      { _resultProfile :: P.Profile
       , _resultOpCounts :: M.Map String Int
       , _resultAvgTimes :: DUGTimeInfo
       , _resultAllTimings :: [DUGTimeInfo]

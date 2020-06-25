@@ -6,7 +6,8 @@ module Test.Rufous
    , Opt.RufousOptions(..)
    , Opt.OutputOptions(..)
    , Opt.args
-   , Opt.logArgs
+   , Opt.outputArgs
+   , Opt.genArgs
 
    , guardFailed
    , shadowUndefined
@@ -83,6 +84,19 @@ rufousAggregate opts rs =
          Log.info $ "Using KMeans aggregation with " ++ show (Opt.aggregationOptions opts)
          Agg.aggregateKMeans (Opt.kmeansOptions (Opt.aggregationOptions opts)) rs
 
+-- | Given a list of results from evaluating DUGs on many implementations
+-- aggregate them and the print the table
+aggregateResults :: Opt.RufousOptions -> S.Signature -> [R.Result] -> IO [Agg.AggregatedResult]
+aggregateResults opts s results = do
+   case R.splitResults results of
+      Left (R.ResultFail f) -> do
+         Log.out "** Failure to Evaluate DUG:"
+         mapM_ (Log.out . ("   " ++)) (lines f)
+         return []
+      Right timingResults -> do
+         Log.info $ "Got " ++ show (length timingResults) ++ " results"
+         rufousAggregate opts timingResults
+
 runRufousOnDug ::
       Opt.RufousOptions
    -> S.Signature
@@ -95,6 +109,7 @@ runRufousOnDug opts s nul impls dug = do
    return r
 
 -- | runs Rufous on a set of DUGs to get timing info for each of them
+-- rather than generating DUGs from profiles
 runRufousOnDugs :: Opt.RufousOptions -> S.Signature -> [D.DUG] -> IO ()
 runRufousOnDugs opts s dugs = do
    Opt.doIf Opt.verbose opts $ do
@@ -122,48 +137,52 @@ runRufousOnDugs opts s dugs = do
    Log.endProgress
    Log.info "Evaluated all DUGs"
 
-   case R.splitResults results of
-      Left (R.ResultFail f) -> do
-         Log.out "** Failure to Evaluate DUG:"
-         mapM_ (Log.out . ("   " ++)) (lines f)
-      Right timingResults -> do
-         Log.info $ "Got " ++ show (length timingResults) ++ " results"
-         Opt.doIf Opt.verbose opts $ do
-            mapM_ VB.logTimingResults timingResults
-         agg <- rufousAggregate opts timingResults
-         Se.select s agg
+   Log.initUnboundedProgressWithMsg "Aggregating"
+   agg <- aggregateResults opts s results
+   Log.endProgress
+   Se.select s agg
+
+runRufousOnProfile :: Opt.RufousOptions -> S.Signature -> P.Profile -> Int -> Int -> IO R.Result
+runRufousOnProfile opts s p i maxi = do
+   let nul = s ^. S.nullImpl
+   let impls = s ^. S.implementations
+
+   Log.debug "Generating DUG:"
+   Log.debug $ " target profile=" ++ show p
+
+   Log.updateProgressMsg $ "Generating DUG#" ++ show i ++ "/" ++ show maxi
+   !d <- G.generateDUG opts s p
+   let d' = d & D.ginfo . _Just . D.idx .~ i
+
+   Opt.doIf (Opt.dumpDUGs . Opt.outputOptions) opts $ do
+      fname <- D.printDUGtoFile opts (Opt.dumpDir (Opt.outputOptions opts) ++ d'^.D.name) d'
+      Log.info $ "Produced " ++ fname
+
+   Log.debug $ " extracted profile=" ++ show (D.extractProfile s d')
+   Log.updateProgressMsg $ "Evaluating DUG#" ++ show i ++ "/" ++ show maxi
+   !r <- runRufousOnDug opts s nul impls d'
+   return r
 
 -- | runs Rufous on a set of Profile by generating DUGs
 runRufousOnProfiles :: Opt.RufousOptions -> S.Signature -> [P.Profile] -> IO ()
 runRufousOnProfiles opts s profiles = do
    let ndugs = length profiles
-   let size = sum [p^.P.size | p <- profiles]
+   let sizes = [p^.P.size | p <- profiles]
+   let impls = s ^. S.implementations
+   let noRuns = Opt.numberOfRuns opts * (1 + length impls)
 
-   Log.info "Generating DUGs:"
-   Log.initProgressWithMsg size ("Generated 0/" ++ show ndugs ++ " DUGs")
-   dugs <- sequence $ do
-      (i, !p) <- (zip [1..] profiles :: [(Integer,P.Profile)])
-      return $ do
-         Log.debug  $ "Generating ... " ++ show i ++ "/" ++ show (length profiles)
-         !g <- G.generateDUG opts s p
-         Log.updateProgressMsg ("Generated " ++ show i ++ "/" ++ show ndugs ++ " DUGs")
-         let g' = g & D.ginfo . _Just . D.idx .~ i
-         return g'
-
-   Log.endProgress
-   Log.info $ "Generated " ++ show (length dugs) ++ " random DUGs from those profiles"
-
-   Opt.doIf Opt.debug opts $ do
-      Log.debug $ "These DUGs have the following extracted profiles:"
-      mapM_ (print . D.extractProfile s) dugs
-
-   Opt.doIf (Opt.dumpDUGs . Opt.outputOptions) opts $ do
-      mapM_ (\d -> do
-         fname <- D.printDUGtoFile opts ("output/" ++ d^.D.name) d
-         Log.info $ "Produced " ++ fname) dugs
+   let barSize = sum sizes + noRuns * ndugs
 
    case Opt.dugs opts of
-      [] -> runRufousOnDugs opts s dugs
+      [] -> do
+         Log.initProgressAll [Just barSize, Nothing] [2, 1] ("Generating DUG#0/" ++ show ndugs)
+         results <- sequence $ do
+            (i, !p) <- (zip [1..] profiles :: [(Int,P.Profile)])
+            return $ runRufousOnProfile opts s p i ndugs
+         Log.updateProgressMsg "Aggregating Results"
+         agg <- aggregateResults opts s results
+         Log.endProgress
+         Se.select s agg
       ds -> runRufousOnDugs opts s ds
 
 -- | Entrypoint to Rufous

@@ -17,8 +17,7 @@ import Test.Rufous.Internal.Evaluation.Types
 mergeResults :: Result -> Result -> Result
 mergeResults r1 r2 =
    Result
-      { _resultDUG=(r1^.resultDUG)
-      , _resultProfile=mergeProfiles (r1^.resultProfile) (r2^.resultProfile)
+      { _resultProfile=mergeProfiles (r1^.resultProfile) (r2^.resultProfile)
       , _resultOpCounts=mergeMaps (r1^.resultOpCounts) (r2^.resultOpCounts)
       , _resultAllTimings=(r1^.resultAllTimings) ++ (r2^.resultAllTimings)
       , _resultAvgTimes=mergeDUGTimeInfos (r1^.resultAvgTimes) (r2^.resultAvgTimes)

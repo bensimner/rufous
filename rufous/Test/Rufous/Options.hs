@@ -19,8 +19,9 @@ module Test.Rufous.Options
    , optValue
 
    -- | default option sets
-   , logArgs
    , args
+   , outputArgs
+   , genArgs
    , kmeansArgs
    , aggregationArgs
 
@@ -167,12 +168,12 @@ genArgs =
       , genFailGuardTimeout = 10
       }
 
-logArgs :: OutputOptions
-logArgs =
+outputArgs :: OutputOptions
+outputArgs =
    OutputOptions
       { dumpDUGs=False
       , dumpDUGDetail=1
-      , dumpDir="./"
+      , dumpDir="./output/"
       , dumpPhaseTiming=True
       , showNullTimes=True
       , showProgressBars=True
@@ -193,7 +194,7 @@ args =
       , verbose=False
       , debug=False
       , verbosity=(-1)
-      , outputOptions=logArgs
+      , outputOptions=outputArgs
       , genOptions=genArgs
       , aggregator=KMeans
       , aggregationOptions=aggregationArgs
