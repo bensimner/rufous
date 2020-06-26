@@ -31,7 +31,7 @@ instance Set SortedListSet where
 makeADTSignature ''Set
 
 main :: IO ()
-main = mainWith args{signature=_Set}
+main = mainWith args{signature=_Set, info=True}
 
 {- EXAMPLE OUTPUT
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

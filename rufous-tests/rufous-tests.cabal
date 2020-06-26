@@ -55,7 +55,8 @@ executable rufous-tests-example-map
   build-depends:       base
                        , rufous
                        , containers
-                       , HMap
+                       , hashable
+                       , hashmap
   hs-source-dirs:      examples
   default-language:    Haskell2010
   ghc-options:         -Wall -O2
