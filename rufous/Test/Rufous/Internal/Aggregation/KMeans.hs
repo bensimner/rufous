@@ -17,7 +17,7 @@ import qualified Test.Rufous.Profile as P
 import qualified Test.Rufous.Run as R
 
 import Test.Rufous.Internal.Aggregation.Types
-import Test.Rufous.Internal.Logger as Log
+import qualified Test.Rufous.Internal.Logger as Log
 
 aggregateKMeans :: KMeansOptions -> [R.Result] -> IO [AggregatedResult]
 aggregateKMeans opts rs = do
@@ -74,12 +74,16 @@ orderedPairs :: M.Map String a -> [(String, a)]
 orderedPairs m = sortOn fst (M.toList m)
 
 vec :: R.Result -> [Float]
-vec r = ws ++ ps ++ [m] ++ [s]
+vec r = norm $ ws ++ ps ++ [m] ++ [s]
    where ws = orderedElems $ p ^. P.operationWeights
          ps = orderedElems $ p ^. P.persistentApplicationWeights
          m = p ^. P.mortality
          p = r ^. R.resultProfile
-         s = fromIntegral $ p ^. P.size
+         s = log $ fromIntegral $ p ^. P.size
+
+norm :: [Float] -> [Float]
+norm v = [x/s | x <- v]
+   where s = sum v
 
 centre :: [[Float]] -> [Float]
 centre vecs = map (/ n) $ map sum (transpose vecs)
