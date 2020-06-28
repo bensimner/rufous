@@ -34,11 +34,11 @@ build initSize = go initSize
          inflate
          b <- tryDeflate
          debugIf b flatDeflateSteps (+1)
-         d <- use dug
-         buf <- use buffer
-         alive <- use living
-         debug <- use dbg
          if size `mod` 100 == 0 then do
+            d <- use dug
+            buf <- use buffer
+            alive <- use living
+            debug <- use dbg
             verboseProgress 100
             debugTrace $ "Step "
                ++ "("
