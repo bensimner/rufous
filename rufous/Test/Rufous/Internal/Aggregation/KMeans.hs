@@ -57,6 +57,7 @@ kmeans rs initClusters = go initClusters
         case kmeansIter rs c of
           c' | end c c' -> return c
           c'            -> do
+             Log.debug "kmeans step"
              Log.updateProgress 1
              go c'
       end c c' = all (uncurry isNear) (zip c c')
