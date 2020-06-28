@@ -183,6 +183,7 @@ makeSegment segmentLength currentSegment thisSegment progress (Just maxProgress)
 
 makeSegment segmentLength currentSegment thisSegment _ _ | currentSegment < thisSegment = replicate segmentLength '.'
 makeSegment segmentLength currentSegment thisSegment _ _ | currentSegment > thisSegment = replicate segmentLength '#'
+makeSegment segmentLength _ _ _ _ = replicate segmentLength '?'
 
 makeProgressSegments :: Int -> Int -> [Int] -> [Maybe Int] -> String
 makeProgressSegments currentSegment currentProgress weights maxProgresses = "[" ++ intercalate " " segments ++ "]"
