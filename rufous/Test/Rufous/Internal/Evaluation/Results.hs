@@ -1,8 +1,11 @@
+{-# LANGUAGE BangPatterns #-}
+
 module Test.Rufous.Internal.Evaluation.Results
    ( mergeResults
    , mergeDUGTimeInfos
    , splitResultFailures
    , splitResults
+   , forceResult
    )
 where
 
@@ -88,3 +91,14 @@ splitResults (r:rs) =
          case splitResults rs of
             Left f -> Left f
             Right xs -> Right (r:xs)
+
+-- | Forcing evaluation of this to WHNF fully evaluates
+-- all of the Result
+forceResult :: Result -> ()
+forceResult (Result p m t rs) =
+      p `seq` forcedOpCounts `seq` (forceDUGTimes t) `seq` (map forceDUGTimes rs) `seq` ()
+   where forcedOpCounts = forceMap m
+         forceMap m' = M.foldl' (\b v -> v `seq` b) () m'
+         forceDUGTimes (DUGEvalFail _) = ()
+         forceDUGTimes (DUGEvalTimes t) = forceTinfo t
+         forceTinfo tinfo = tinfo^.nullTime `seq` (sum $ M.elems $ tinfo^.times) `seq` ()

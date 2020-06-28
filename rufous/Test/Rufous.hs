@@ -34,6 +34,8 @@ import Control.Lens
 
 import System.Random
 
+import qualified Data.List as L
+
 import qualified Test.Rufous.Options as Opt
 
 import qualified Test.Rufous.DUG as D
@@ -105,8 +107,21 @@ runRufousOnDug ::
    -> D.DUG
    -> IO R.Result
 runRufousOnDug opts s nul impls dug = do
-   !r <- R.run s dug nul impls (Opt.numberOfRuns opts)
-   return r
+   R.run s dug nul impls (Opt.numberOfRuns opts)
+
+-- | Runs Rufous on a DUG
+-- but does so strictly -- ensuring no remaining DUG
+-- thunks are left behind
+runRufousOnDug' ::
+      Opt.RufousOptions
+   -> S.Signature
+   -> S.Implementation
+   -> [S.Implementation]
+   -> D.DUG
+   -> IO R.Result
+runRufousOnDug' opts s nul impls dug = do
+   r <- R.run s dug nul impls (Opt.numberOfRuns opts)
+   return $ R.forceResult r `seq` r
 
 -- | runs Rufous on a set of DUGs to get timing info for each of them
 -- rather than generating DUGs from profiles
@@ -131,11 +146,15 @@ runRufousOnDugs opts s dugs = do
       (i, d) <- zip [1..] dugs
       return $ do
          Log.debug $ "Evaluating ... " ++ show i ++ "/" ++ show n
-         r <- runRufousOnDug opts s nul impls d
+         r <- runRufousOnDug' opts s nul impls d
          Log.updateProgressMsg ("Evaluated " ++ show i ++ "/" ++ show n ++ " DUGs")
          return r
    Log.endProgress
    Log.info "Evaluated all DUGs"
+
+   -- force all thunks for the results before trying to aggregate
+   -- this ensures that all the DUGs are fully evaluated and GCd before continuing
+   let () = L.foldl' (flip seq) () results
 
    Log.initUnboundedProgressWithMsg "Aggregating"
    agg <- aggregateResults opts s results
@@ -151,17 +170,16 @@ runRufousOnProfile opts s p i maxi = do
    Log.debug $ " target profile=" ++ show p
 
    Log.updateProgressMsg $ "Generating DUG#" ++ show i ++ "/" ++ show maxi
-   !d <- G.generateDUG opts s p
+   d <- G.generateDUG opts s p
    let d' = d & D.ginfo . _Just . D.idx .~ i
 
    Opt.doIf (Opt.dumpDUGs . Opt.outputOptions) opts $ do
       fname <- D.printDUGtoFile opts (Opt.dumpDir (Opt.outputOptions opts) ++ d'^.D.name) d'
-      Log.info $ "Produced " ++ fname
+      Log.info $ " produced " ++ fname
 
    Log.debug $ " extracted profile=" ++ show (D.extractProfile s d')
    Log.updateProgressMsg $ "Evaluating DUG#" ++ show i ++ "/" ++ show maxi
-   !r <- runRufousOnDug opts s nul impls d'
-   return r
+   runRufousOnDug' opts s nul impls d'
 
 -- | runs Rufous on a set of Profile by generating DUGs
 runRufousOnProfiles :: Opt.RufousOptions -> S.Signature -> [P.Profile] -> IO ()
@@ -180,7 +198,7 @@ runRufousOnProfiles opts s profiles = do
             (i, !p) <- (zip [1..] profiles :: [(Int,P.Profile)])
             return $ runRufousOnProfile opts s p i ndugs
          Log.updateProgressMsg "Aggregating Results"
-         agg <- aggregateResults opts s results
+         !agg <- aggregateResults opts s results
          Log.endProgress
          Se.select s agg
       ds -> runRufousOnDugs opts s ds
