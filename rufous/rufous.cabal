@@ -29,6 +29,7 @@ library
                        , Test.Rufous.Select
                        , Test.Rufous.TH
                        , Test.Rufous.Options
+                       , Test.Rufous.Exceptions
 
                        , Test.Rufous.Aggregate
                        , Test.Rufous.Internal.Aggregation.KMeans
