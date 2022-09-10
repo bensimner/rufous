@@ -87,7 +87,7 @@ implTyCtor :: IMPLDef -> Type
 implTyCtor (FirstOrder _ t) = t
 implTyCtor (SecondOrder _ _ t) = t
 
-parseName :: Name -> Q (TyVarBndr, [Dec], [InstanceDec])
+parseName :: Name -> Q (TyVarBndrUnit, [Dec], [InstanceDec])
 parseName name = do
    info <- reify name
    case info of
@@ -171,10 +171,10 @@ makeExtractors name = do
    -- Return all declarations
    return extractorImpls
 
-tyVarName :: TyVarBndr -> Q Name
-tyVarName (PlainTV v) = return v
-tyVarName (KindedTV v ((AppT (AppT ArrowT StarT) StarT))) = return v
-tyVarName (KindedTV v kind) = fail $
+tyVarName :: TyVarBndrUnit -> Q Name
+tyVarName (PlainTV v ()) = return v
+tyVarName (KindedTV v () ((AppT (AppT ArrowT StarT) StarT))) = return v
+tyVarName (KindedTV v () kind) = fail $
       "Rufous: in binding for type variable " ++ (nameBase v) ++ " in class declaration: "
       ++ (nameBase v) ++ " has unsupported kind " ++ (pprint kind) ++ ".  Only kind * -> * is supported."
 
@@ -342,7 +342,7 @@ pairToForceObs _ (methName, tys) = recover (return Nothing) comp
                let dynCell = AppE (VarE 'toDyn) (SigE (VarE n) (concretize forceTy))
                let opNameLit = LitE (StringL methName)
                -- TH >= 2.16 makes these Maybe's ?
-               return $ Just $ TupE [opNameLit, dynCell]
+               return $ Just $ TupE [Just opNameLit, Just dynCell]
             _ -> fail "torecover"
       title (c:ws) = toUpper c : ws
       title [] = []
