@@ -136,7 +136,7 @@ makeADTSignature name = do
          case maybeShadow of
             Nothing -> [| Nothing |]
             Just s  -> [| Just $s |]
-   let sig = [| Signature $n $ops $forcers $impls $nullImplementation $shadow |]
+   let sig = [| Signature $n $ops $forcers $impls (Just $nullImplementation) $shadow |]
    let specName = mkName $ "_" ++ (nameBase name)
    let specPat = return (VarP specName)
    ds <- [d| $specPat = $sig |]

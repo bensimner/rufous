@@ -19,6 +19,10 @@ module Test.Rufous
    , D.DUG
    , P.Profile
 
+   , S.addImpl
+   , S.setNull
+   , S.setShadow
+
    -- TH Constructor
    , TH.makeADTSignature
    , TH.makeExtractors
@@ -47,9 +51,11 @@ import qualified Test.Rufous.Select as Se
 import qualified Test.Rufous.TH as TH
 import qualified Test.Rufous.Aggregate as Agg
 import qualified Test.Rufous.Extract as E
+import qualified Test.Rufous.Exceptions as Exc
 
 import qualified Test.Rufous.Internal.VerboseOutput as VB
 import qualified Test.Rufous.Internal.Logger as Log
+import qualified Test.Rufous.Internal.Utils as U
 
 -- | Case for guard on a shadow operation failing
 --
@@ -130,7 +136,7 @@ runRufousOnDugs opts s dugs = do
    Opt.doIf Opt.verbose opts $ do
       mapM_ VB.logGeneratedDUG dugs
 
-   let nul = s ^. S.nullImpl
+   nul <- U.unwrapJustIO (Exc.MissingNullImplementation (s^.S.signatureADTName)) (s ^. S.nullImpl)
    let impls = s ^. S.implementations
    Log.info $ "Found Null Implementation: " ++ show nul
 
@@ -163,7 +169,7 @@ runRufousOnDugs opts s dugs = do
 
 runRufousOnProfile :: Opt.RufousOptions -> S.Signature -> P.Profile -> Int -> Int -> IO R.Result
 runRufousOnProfile opts s p i maxi = do
-   let nul = s ^. S.nullImpl
+   nul <- U.unwrapJustIO (Exc.MissingNullImplementation (s ^. S.signatureADTName)) (s ^. S.nullImpl)
    let impls = s ^. S.implementations
 
    Log.debug "Generating DUG:"
@@ -196,7 +202,8 @@ runRufousOnProfiles opts s profiles = do
          Log.initProgressAll [Just barSize, Nothing] [2, 1] ("Generating DUG#0/" ++ show ndugs)
          results <- sequence $ do
             (i, !p) <- (zip [1..] profiles :: [(Int,P.Profile)])
-            return $ runRufousOnProfile opts s p i ndugs
+            let !r = runRufousOnProfile opts s p i ndugs
+            return r
          Log.updateProgressMsg "Aggregating Results"
          !agg <- aggregateResults opts s results
          Log.endProgress
