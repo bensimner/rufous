@@ -36,6 +36,8 @@ where
 
 import Prelude hiding (log)
 
+import System.IO (Handle, stderr)
+
 import qualified Test.Rufous.Profile as P
 import qualified Test.Rufous.Internal.Signature.SignatureType as S
 import qualified Test.Rufous.Internal.DUG.Types as D
@@ -70,6 +72,9 @@ data RufousOptions =
       , info :: Bool
       , verbose :: Bool
       , debug :: Bool
+
+      -- | Stream to send debug output to
+      , traceStream :: Handle
 
       -- | Rufous can also output additional information
       -- about the DUGs as it generates them
@@ -106,6 +111,8 @@ data OutputOptions =
       , dumpPhaseTiming :: Bool
       , showNullTimes :: Bool
       , showProgressBars :: Bool
+      , showDUGRunTimes :: Bool
+      , showDUGGeneration :: Bool
    }
    deriving (Show)
 
@@ -168,15 +175,20 @@ genArgs =
       , genFailGuardTimeout = 10
       }
 
+
+-- | Default `debug` output options
+-- (extra debug options for modules may be found under their specific options value)
 outputArgs :: OutputOptions
 outputArgs =
    OutputOptions
       { dumpDUGs=False
       , dumpDUGDetail=1
       , dumpDir="./output/"
-      , dumpPhaseTiming=True
-      , showNullTimes=True
+      , dumpPhaseTiming=False
+      , showNullTimes=False
       , showProgressBars=True
+      , showDUGRunTimes=False
+      , showDUGGeneration=False
       }
 
 args :: RufousOptions
@@ -193,6 +205,7 @@ args =
       , info=False
       , verbose=False
       , debug=False
+      , traceStream=stderr
       , verbosity=(-1)
       , outputOptions=outputArgs
       , genOptions=genArgs

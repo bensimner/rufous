@@ -5,6 +5,7 @@ module Test.Rufous.Internal.Aggregation.KMeans
    )
 where
 
+import Control.Monad (when)
 import Control.Lens
 
 import System.Random (randomRIO)
@@ -25,11 +26,18 @@ aggregateKMeans opts rs = do
       Log.debug $ "Using KMeans"
       initClusters <- makeInitClusters n rs
       Log.debug $ "KMeans #init clusters=" ++ show (length initClusters)
-      !clusters <- kmeans rs initClusters
+      when (showKMeansSteps opts) $ do
+         Log.debug $ "KMeans pointcloud: " ++ show (pointcloud rs)
+         Log.debug $ "KMeans init clusters: " ++ show initClusters
+      !clusters <- kmeans opts rs initClusters
       Log.debug $ "KMeans #clusters=" ++ show (length clusters)
       let groups = allocateGroups rs clusters
       let merged = map mergeGroup groups
       return merged
+
+-- | Set of points from the results
+pointcloud :: [R.Result] -> [[Float]]
+pointcloud rs = map vec rs
 
 mergeGroup :: [R.Result] -> AggregatedResult
 mergeGroup rs = AggregatedResult rs r'
@@ -50,20 +58,25 @@ generateInitCluster rs _ = do
       return $ vecs !! i
    where vecs = map vec rs
 
-kmeans :: [R.Result] -> [[Float]] -> IO [[Float]]
-kmeans rs initClusters = go initClusters
+kmeans :: KMeansOptions -> [R.Result] -> [[Float]] -> IO [[Float]]
+kmeans opts rs initClusters = go initClusters
    where
       go c = do
-        case kmeansIter rs c of
-          c' | end c c' -> return c
-          c'            -> do
-             Log.debug "kmeans step"
-             Log.updateProgress 1
-             go c'
+         c' <- kmeansIter opts rs c
+         Log.updateProgress 1
+         if end c c' then
+            return c'
+         else
+            go c'
       end c c' = all (uncurry isNear) (zip c c')
 
-kmeansIter :: [R.Result] -> [[Float]] -> [[Float]]
-kmeansIter rs clusters = clusters'
+kmeansIter :: KMeansOptions -> [R.Result] -> [[Float]] -> IO [[Float]]
+kmeansIter opts rs clusters = do
+      when (showKMeansSteps opts) $ do
+         Log.debug $ "KMeans Step: " ++ show clusters
+         Log.debug $ "KMeans Groups: " ++ show groupVecs
+         Log.debug $ "KMeans #clusters': " ++ show (length clusters')
+      return clusters'
    where groups = allocateGroups rs clusters
          groupVecs = map (map vec) groups
          clusters' = map centre $ groupVecs
@@ -103,12 +116,11 @@ allocateGroups :: [R.Result] -> [[Float]] -> [[R.Result]]
 allocateGroups rs clusters = allocated
    where allocations = map (allocate clusters) rs
          pairs = zip rs allocations
-         -- allocated = [[p | (p, alloc) <- pairs, isNear alloc cluster ] | cluster <- clusters]
          allocated = partition pairs clusters
 
 partition :: [(R.Result, [Float])] -> [[Float]] -> [[R.Result]]
 partition pairs clusters = partPairs ordered
-   where tagged = [(p, i) | (p, alloc) <- pairs, (i, _) <- find alloc (ranged clusters)]
+   where tagged = [(r, i) | (r, alloc) <- pairs, (i, _) <- find alloc (ranged clusters)]
          ordered = sortOn snd tagged
 
 find :: [Float] -> [(Int, [Float])] -> [(Int, [Float])]
@@ -126,6 +138,7 @@ partPairs vs = go vs []
             else
                (a:x) : go ((b,j):xs) []
 
+-- | Pick the nearest centre to the result from the set of cluster centres
 allocate :: [[Float]] -> R.Result -> [Float]
 allocate fs r = snd m
    where v = vec r

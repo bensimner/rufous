@@ -1,7 +1,5 @@
 module Test.Rufous.Internal.Utils where
 
-import qualified Test.Rufous.Exceptions as Exc
-
 import Control.Exception (Exception, throwIO)
 
 import Numeric

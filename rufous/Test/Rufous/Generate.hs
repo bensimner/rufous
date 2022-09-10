@@ -35,7 +35,7 @@ precheck opts s _ = do
 -- | Generates a 'DUG' which conforms to a given Profile.
 generateDUG :: Opt.RufousOptions -> S.Signature -> P.Profile -> IO D.DUG
 generateDUG o s p = do
-      Log.debug $ "generating of size " ++ show (p^.P.size)
+      Log.debugIf (Opt.showDUGGeneration . Opt.outputOptions) $ "generating of size " ++ show (p^.P.size)
       precheck o s p
 
       stdgen <- getStdGen

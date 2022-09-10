@@ -24,6 +24,7 @@ import Test.Rufous.Internal.Evaluation.Types
 data KMeansOptions =
    KMeansOptions
       { numMeans :: Int
+      , showKMeansSteps :: Bool
       }
    deriving (Show)
 
@@ -47,7 +48,7 @@ data AggregatedResult =
 makeLenses ''AggregatedResult  -- the other types are not lensy so that the API is clean
 
 kmeansArgs :: KMeansOptions
-kmeansArgs = KMeansOptions 5
+kmeansArgs = KMeansOptions 5 False
 
 aggregationArgs :: AggregationOptions
 aggregationArgs = AggregationOptions kmeansArgs

@@ -5,9 +5,13 @@ module Test.Rufous
      mainWith
    , Opt.RufousOptions(..)
    , Opt.OutputOptions(..)
+   , Opt.AggregationOptions(..)
+   , Opt.KMeansOptions(..)
    , Opt.args
    , Opt.outputArgs
    , Opt.genArgs
+   , Opt.aggregationArgs
+   , Opt.kmeansArgs
 
    , guardFailed
    , shadowUndefined
@@ -172,8 +176,8 @@ runRufousOnProfile opts s p i maxi = do
    nul <- U.unwrapJustIO (Exc.MissingNullImplementation (s ^. S.signatureADTName)) (s ^. S.nullImpl)
    let impls = s ^. S.implementations
 
-   Log.debug "Generating DUG:"
-   Log.debug $ " target profile=" ++ show p
+   Log.debugIf (Opt.showDUGGeneration . Opt.outputOptions) "Generating DUG:"
+   Log.debugIf (Opt.showDUGGeneration . Opt.outputOptions) $ " target profile=" ++ show p
 
    Log.updateProgressMsg $ "Generating DUG#" ++ show i ++ "/" ++ show maxi
    d <- G.generateDUG opts s p
@@ -183,7 +187,7 @@ runRufousOnProfile opts s p i maxi = do
       fname <- D.printDUGtoFile opts (Opt.dumpDir (Opt.outputOptions opts) ++ d'^.D.name) d'
       Log.info $ " produced " ++ fname
 
-   Log.debug $ " extracted profile=" ++ show (D.extractProfile s d')
+   Log.debugIf (Opt.showDUGGeneration . Opt.outputOptions) $ " extracted profile=" ++ show (D.extractProfile s d')
    Log.updateProgressMsg $ "Evaluating DUG#" ++ show i ++ "/" ++ show maxi
    runRufousOnDug' opts s nul impls d'
 

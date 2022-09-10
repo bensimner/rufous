@@ -5,6 +5,9 @@ module Test.Rufous.Internal.Logger
     , log
     , debug
 
+    -- conditional versions of the above
+    , debugIf
+
     -- a version of Option.doIf
     -- but reads the RufousOptions locally
     , doIfIO
@@ -31,6 +34,7 @@ import Data.Time.Clock
 
 import Data.List
 
+import Control.Monad (when)
 import System.IO
 import System.IO.Unsafe (unsafePerformIO)
 import qualified Data.IORef as Ref
@@ -70,11 +74,22 @@ debug s = do
    opts <- Ref.readIORef optionRef
    debugTrace opts s
 
+debugIf :: (RufousOptions -> Bool) -> String -> IO ()
+debugIf cond s = do
+   doIfIO cond (debug s)
+
+
 {- IO wrappers -}
 doIfIO :: (RufousOptions -> Bool) -> IO () -> IO ()
 doIfIO f a = do
     opts <- Ref.readIORef optionRef
-    doIf f opts a
+    when (f opts) a
+
+-- | doWhen is like `when` but where the condition is an IO action
+doWhen :: IO Bool -> IO () -> IO ()
+doWhen ba a = do
+    b <- ba
+    when b a
 
 {- Internal Wrappers -}
 outTrace :: RufousOptions -> String -> IO ()
@@ -101,24 +116,28 @@ logLn s = last s `seq` mapM_ debugPutLn (map ("[  LOG] " ++) (lines s))
 debugLn :: String -> IO ()
 debugLn s = last s `seq` mapM_ debugPutLn (map ("[DEBUG] " ++) (lines s))
 
+debugStream :: IO Handle
+debugStream = do
+    opts <- Ref.readIORef optionRef
+    return $ traceStream opts
+
 outPutLn :: String -> IO ()
 outPutLn s = do
-    hPutStr stdout ("\r" ++ s)
-    pg <- Ref.readIORef _progressBar
-    case pg of
-        Just prog -> hPutStr stdout (replicate (progLastLength prog - length s) ' ')
-        Nothing -> return ()
-    hPutStr stdout "\n"
-    refreshProgress
+    putLn stdout s
 
 debugPutLn :: String -> IO ()
 debugPutLn s = do
-    hPutStr stderr ("\r" ++ s)
+    outf <- debugStream
+    putLn outf s
+
+putLn :: Handle -> String -> IO ()
+putLn outf s = do
+    hPutStr outf ("\r" ++ s)
     pg <- Ref.readIORef _progressBar
     case pg of
-        Just prog -> hPutStr stderr (replicate (progLastLength prog - length s) ' ')
+        Just prog -> hPutStr outf (replicate (progLastLength prog - length s) ' ')
         Nothing -> return ()
-    hPutStr stderr "\n"
+    hPutStr outf "\n"
     refreshProgress
 
 {- Progress Bar -}
@@ -199,8 +218,9 @@ refreshProgress = doIfIO ifShowProgress $ do
         Just prog -> do
             let k = progLastLength prog
             let bar = makeProgressSegments (progCurrentPartition prog) (progCurrentProgress prog) (progPartitionWeights prog) (progPartitionMax prog) ++ " " ++ progCurrentMessage prog
-            hPutStr stderr $ "\r" ++ bar ++ replicate (k - length bar) '#'
-            hFlush stderr
+            outf <- debugStream
+            hPutStr outf $ "\r" ++ bar ++ replicate (k - length bar) '#'
+            hFlush outf
             ctime <- getCurrentTime
             Ref.writeIORef _progressBar (Just (prog{progLastUpdate=ctime, progLastLength=length bar}))
             return ()
@@ -251,4 +271,5 @@ endProgress = doIfIO ifShowProgress $ do
     Ref.writeIORef _progressBar (Just prog{progCurrentPartition=1 + progPartitions prog})
     refreshProgress
     Ref.writeIORef _progressBar Nothing
-    hPutStrLn stderr ""
+    outf <- debugStream
+    hPutStrLn outf ""
