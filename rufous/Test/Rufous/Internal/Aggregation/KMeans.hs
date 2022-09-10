@@ -134,7 +134,11 @@ allocate fs r = snd m
          m = minimum pairs
 
 dist :: [Float] -> [Float] -> Float
-dist x y = sum $ map (\(a,b) -> (b - a)^(2 :: Int)) (zip x y)
+dist x y = sum $ map (uncurry diff) (zip x y)
+   where
+      diff a b | isNaN a && isNaN b = 0
+      diff a b | isNaN a || isNaN b = 1 -- since the vectors are normalised, 1 is the max distance they can have
+      diff a b = (b - a) ** (2 :: Float)
 
 ranged :: [a] -> [(Int, a)]
 ranged xs = zip [0..] xs
