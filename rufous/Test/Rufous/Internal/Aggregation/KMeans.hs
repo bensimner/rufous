@@ -83,7 +83,7 @@ vec r = norm $ ws ++ ps ++ [m] ++ [s]
          s = log $ fromIntegral $ p ^. P.size
 
 norm :: [Float] -> [Float]
-norm v = [x/s | x <- v]
+norm v = map (/ s) v
    where s = sum v
 
 centre :: [[Float]] -> [Float]
