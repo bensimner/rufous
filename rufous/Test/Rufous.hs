@@ -201,13 +201,16 @@ runRufousOnProfiles opts s profiles = do
 
    let barSize = sum sizes + noRuns * ndugs
 
+   -- check if given an explicit set of DUGs to use,
+   -- otherwise generate them from scratch
    case Opt.dugs opts of
       [] -> do
          Log.initProgressAll [Just barSize, Nothing] [2, 1] ("Generating DUG#0/" ++ show ndugs)
-         results <- sequence $ do
+         -- generate and evaluate them immediately, one-by-one
+         -- not remembering the DUG from last time.
+         results <- U.psequence $ do
             (i, !p) <- (zip [1..] profiles :: [(Int,P.Profile)])
-            let !r = runRufousOnProfile opts s p i ndugs
-            return r
+            return $ runRufousOnProfile opts s p i ndugs
          Log.updateProgressMsg "Aggregating Results"
          !agg <- aggregateResults opts s results
          Log.endProgress

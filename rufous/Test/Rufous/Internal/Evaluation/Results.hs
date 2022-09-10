@@ -13,6 +13,7 @@ import Control.Lens
 
 import qualified Data.Map as M
 
+import qualified Test.Rufous.Signature as S
 import qualified Test.Rufous.Profile as P
 
 import Test.Rufous.Internal.Evaluation.Types
@@ -93,11 +94,15 @@ splitResults (r:rs) =
             Right xs -> Right (r:xs)
 
 -- | Forcing evaluation of this to WHNF fully evaluates
--- all of the Result
+-- all of the Result.
+--
+-- We need to do this thoroughly otherwise the old DUG might hang around in order to be able to evaluate
+-- parts of the final result later on during aggregation, which would cause a memory leak
 forceResult :: Result -> ()
 forceResult (Result p m t rs) =
-      p `seq` forcedOpCounts `seq` (forceDUGTimes t) `seq` (map forceDUGTimes rs) `seq` ()
+      forceProf p `seq` forcedOpCounts `seq` (forceDUGTimes t) `seq` (map forceDUGTimes rs) `seq` ()
    where forcedOpCounts = forceMap m
+         forceProf (P.Profile pw ow m sz) = forceMap pw `seq` forceMap ow `seq` m `seq` sz `seq` ()
          forceMap m' = M.foldl' (\b v -> v `seq` b) () m'
          forceDUGTimes (DUGEvalFail _) = ()
          forceDUGTimes (DUGEvalTimes t) = forceTinfo t

@@ -22,3 +22,16 @@ floatFmt f = showEFloat (Just 2) f ""
 unwrapJustIO :: Exception e => e -> Maybe a -> IO a
 unwrapJustIO e Nothing = throwIO e
 unwrapJustIO _ (Just v) = return v
+
+
+-- | Sequence monadic actions
+--   evaluating each action's return to WHNF before evaluating the next
+psequence :: [IO a] -> IO [a]
+psequence [] = error "psequence :: expected non-empty list of actions"
+psequence [a] = do
+    v <- a
+    v `seq` return (return v)
+psequence (a:as) = do
+    v <- a
+    rm <- v `seq` psequence as
+    return (v:rm)
