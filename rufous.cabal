@@ -68,5 +68,13 @@ library
                        , filepath
                        , directory
                        , QuickCheck
+  hs-source-dirs:      rufous
   default-language:    Haskell2010
-  ghc-options:         -Wall -O2
+
+benchmark queue
+  type:                exitcode-stdio-1.0
+  main-is:             Queue.hs
+  build-depends:       base, rufous
+  hs-source-dirs:      rufous-tests/examples
+  default-language:    Haskell2010
+  ghc-options:         -O2
