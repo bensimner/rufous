@@ -1,4 +1,4 @@
-module Test.Rufous.Internal.DUG.DotPrinter where
+module Test.Rufous.Internal.DUG.DotPrint where
 
 import System.FilePath
 import System.Directory

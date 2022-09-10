@@ -1,4 +1,4 @@
-module Test.Rufous.Internal.DUG.HsPrinter where
+module Test.Rufous.Internal.DUG.HsPrint where
 
 import System.FilePath
 import System.Directory

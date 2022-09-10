@@ -21,7 +21,7 @@ import qualified Test.Rufous.Exceptions as Exc
 
 import qualified Test.Rufous.Internal.DUG.Types as D
 import qualified Test.Rufous.Internal.DUG.ProfileExtractor as PrExtract
-import qualified Test.Rufous.Internal.DUG.HsPrinter as DP
+import qualified Test.Rufous.Internal.DUG.HsPrint as DP
 
 import Test.Rufous.Internal.Evaluation.Types
 import Test.Rufous.Internal.Evaluation.Results as Rs

@@ -2,8 +2,8 @@
 module Main where
 
 import Test.Rufous
-import qualified Test.Rufous.Internal.DUG.DotPrinter as GraphViz
-import qualified Test.Rufous.Internal.DUG.HsPrinter as SrcPrinter
+import qualified Test.Rufous.Internal.DUG.DotPrint as GraphViz
+import qualified Test.Rufous.Internal.DUG.HsPrint as SrcPrinter
 
 class ListADT t where
    listcons :: a -> t a -> t a

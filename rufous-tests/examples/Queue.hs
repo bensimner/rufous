@@ -75,7 +75,7 @@ instance Queue RQueue where
    empty = RQ [] [] []
    snoc x (RQ f b ss) = rq f (x:b) ss
    head (RQ (f:_) _ _) = f
-   tail (RQ (_:f) b ss) = rq f b ss
+   tail (RQ (_:fs) b ss) = rq fs b ss
 
 data ShadowQueue x = ShadowQueue [x]
    deriving (Show,Eq)
@@ -95,7 +95,7 @@ main :: IO ()
 main = mainWith
          args
             { signature=_Queue
-            , averageDugSizes=[10000]
+            , averageDugSizes=[100, 1000, 10000]
             , numberOfTests=50 -- number of DUGs to generate
 
             , info=True -- equivalent to saying verbosity=1

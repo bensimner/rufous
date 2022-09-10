@@ -19,7 +19,7 @@ source-repository head
   location: https://github.com/bensimner/rufous
 
 library
-  exposed-modules:     Test.Rufous
+  exposed-modules:       Test.Rufous
                        , Test.Rufous.DUG
                        , Test.Rufous.Profile
                        , Test.Rufous.Signature
@@ -30,12 +30,11 @@ library
                        , Test.Rufous.TH
                        , Test.Rufous.Options
                        , Test.Rufous.Exceptions
-
                        , Test.Rufous.Aggregate
                        , Test.Rufous.Internal.Aggregation.KMeans
                        , Test.Rufous.Internal.Aggregation.Types
-                       , Test.Rufous.Internal.DUG.DotPrinter
-                       , Test.Rufous.Internal.DUG.HsPrinter
+                       , Test.Rufous.Internal.DUG.DotPrint
+                       , Test.Rufous.Internal.DUG.HsPrint
                        , Test.Rufous.Internal.DUG.ProfileExtractor
                        , Test.Rufous.Internal.DUG.Types
                        , Test.Rufous.Internal.DUG.Spanning
