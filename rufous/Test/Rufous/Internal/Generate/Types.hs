@@ -137,6 +137,11 @@ debugTrace msg = do
    () <- return $ unsafePerformIO $ Log.debug msg
    return ()
 
+debugTraceIf :: (Opt.RufousOptions -> Bool) -> String -> GenState ()
+debugTraceIf cond msg = do
+   () <- return $ unsafePerformIO $ Log.debugIf cond msg
+   return ()
+
 verboseProgressFn :: IO () -> GenState ()
 verboseProgressFn f = do
    opts <- use opt

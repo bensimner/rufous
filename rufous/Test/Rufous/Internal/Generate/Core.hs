@@ -42,7 +42,7 @@ build initSize = go initSize
             alive <- use living
             debug <- use dbg
             verboseProgress 100
-            debugTrace $ "Step "
+            debugTraceIf (Opt.showDUGGeneration . Opt.outputOptions) $ "Step "
                ++ "("
                ++ "remaining=" ++ show size
                ++ ", size=" ++ show (D.size d)
