@@ -6,6 +6,7 @@ import Control.Lens
 import Unsafe.Coerce
 import Control.Exception
 import System.IO.Unsafe
+import Data.Typeable
 
 import Data.Dynamic
 
@@ -16,6 +17,8 @@ import qualified Data.List as L
 import Data.Maybe (fromJust)
 
 import qualified Test.Rufous.Signature as S
+import qualified Test.Rufous.Exceptions as Exc
+
 import qualified Test.Rufous.Internal.DUG.Types as D
 import qualified Test.Rufous.Internal.DUG.ProfileExtractor as PrExtract
 import qualified Test.Rufous.Internal.DUG.HsPrinter as DP
@@ -145,7 +148,7 @@ runOn s d impl = do
 
             -- These should never occur if using the TH splices
             RunShadowTypeMismatch -> error "Rufous: internal: shadow type mismatch."
-            RunTypeMismatch -> error "Rufous: internal: type mismatch during shadow check."
+            RunTypeMismatch tf tv -> throwIO (Exc.ShadowTypeMismatch (show tf) (show tv))
             RunExcept e -> error $  "Rufous: internal: " ++ show e
       -- below are for error handling
       implNodeShow :: Int -> IO String
@@ -328,14 +331,14 @@ nodeShow op impl dyn = unsafePerformIO $ do
 -- | Run a Dynamic, try force it to WHNF, then return a RunResult
 -- which is a:
 --  RunTypeMismatch if the dynamic was badly typed
---  RunExcept if forcing the dynamic raises a RufousException
+--  RunExcept if forcing the dynamic raises a RufousEvalException
 --  RunSuccess v if the force was successful where v is the value it returned
 runDyn :: Typeable a => a -> (Dynamic -> Maybe a) -> Dynamic -> IO RunResult
-runDyn _ f d' = do
+runDyn tr f d' = do
       case f d' of
-         Nothing -> return $ RunTypeMismatch
+         Nothing -> return $ RunTypeMismatch (typeOf tr) (dynTypeRep d')
          Just r  -> catch (wrap r) handleE
    where
-      handleE :: RufousException -> IO RunResult
+      handleE :: RufousEvalException -> IO RunResult
       handleE = return . RunExcept
       wrap x = RunSuccess <$> (return $! x)

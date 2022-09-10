@@ -22,10 +22,10 @@ import qualified Test.Rufous.Profile as P
 -- fully-satisifed version in the DUG failed.
 -- NotImplemneted means there is no valid implementation for this
 -- operation (such as for observers in shadows).
-data RufousException =
+data RufousEvalException =
       GuardFailed | NotImplemented
    deriving (Show, Typeable)
-instance Exception RufousException
+instance Exception RufousEvalException
 
 -- | When Running a node in a DUG there are multiple outcomes
 data RunResult =
@@ -33,14 +33,14 @@ data RunResult =
       RunSuccess !a
    | RunShadowTypeMismatch
    | RunShadowFailure S.Implementation D.Node String
-   | RunTypeMismatch
-   | RunExcept RufousException
+   | RunTypeMismatch TypeRep TypeRep
+   | RunExcept RufousEvalException
 
 instance Show RunResult where
    show (RunSuccess a) = "RunSuccess <" ++ show (typeOf a) ++ ">"
    show RunShadowTypeMismatch = "RunShadowTypeMismatch"
    show (RunShadowFailure a b c) = "RunShadowFailure " ++ intercalate " " [show a, show b, show c]
-   show RunTypeMismatch = "RunTypeMismatch"
+   show (RunTypeMismatch _ _) = "RunTypeMismatch"
    show (RunExcept e) = "RunExcept " ++ show e
 
 -- | 'TimingInfo' contains the time for a DUG, for each implementation

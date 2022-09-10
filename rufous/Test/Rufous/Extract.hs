@@ -148,6 +148,7 @@ nonversion !parentId !argId (S.NonVersion nva) x = seq update x
 nonversion _ _ _ _ = error "nonversion expected a NonVersion"
 {-# NOINLINE nonversion #-}
 
+
 {-
 class Listy t where
    listcons :: a -> t a -> t a

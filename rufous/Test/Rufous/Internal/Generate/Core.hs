@@ -6,6 +6,7 @@ import Control.Lens
 import Data.Dynamic
 import System.IO.Unsafe
 
+import Control.Exception (throw)
 import Control.Monad.State (get)
 
 import qualified Data.Map as M
@@ -16,6 +17,7 @@ import qualified Test.Rufous.Run as R
 import qualified Test.Rufous.DUG as D
 import qualified Test.Rufous.Options as Opt
 import qualified Test.Rufous.Profile as P
+import qualified Test.Rufous.Exceptions as Exc
 
 import Test.Rufous.Internal.Generate.Types
 import Test.Rufous.Internal.Generate.Buffer
@@ -122,7 +124,7 @@ commitBop bop = do
          case result of
             R.RunSuccess _ -> cont shadow
             R.RunExcept R.NotImplemented -> cont shadow
-            R.RunTypeMismatch -> error "Shadow type mismatch"
+            R.RunTypeMismatch tf tv -> throw (Exc.ShadowTypeMismatch (show tf) (show tv))
             R.RunExcept R.GuardFailed -> do
                -- record for each Version that it failed for this arg.
                -- and for versions that reached a threshold, don't try those
