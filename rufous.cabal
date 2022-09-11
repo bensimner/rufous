@@ -103,10 +103,9 @@ benchmark list
   default-language:    Haskell2010
   ghc-options:         -O2
 
-benchmark extract
-  type:                exitcode-stdio-1.0
+executable extract
   main-is:             Extract.hs
   build-depends:       base, rufous
   hs-source-dirs:      rufous-tests/examples
   default-language:    Haskell2010
-  ghc-options:         -O2
+  ghc-options:         -O0
