@@ -176,7 +176,7 @@ runRufousOnProfile opts s p i maxi = do
    nul <- U.unwrapJustIO (Exc.MissingNullImplementation (s ^. S.signatureADTName)) (s ^. S.nullImpl)
    let impls = s ^. S.implementations
 
-   Log.debugIf (Opt.showDUGGeneration . Opt.outputOptions) "Generating DUG:"
+   Log.log $ "Generating DUG#" ++ show i ++ "/" ++ show maxi
    Log.debugIf (Opt.showDUGGeneration . Opt.outputOptions) $ " target profile=" ++ show p
 
    Log.updateProgressMsg $ "Generating DUG#" ++ show i ++ "/" ++ show maxi
