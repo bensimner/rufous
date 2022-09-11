@@ -588,7 +588,7 @@ buildImplPair (name, ty, retTy) = [| ($nameStr, ($var, $rt)) |]
    where
       nameStr = return $ LitE $ StringL name
       var = return $ AppE (VarE 'toDyn) (SigE (VarE (mkName name)) (concretize ty))
-      rt = return $ AppE (ConE 'ImplType) (SigE (VarE $ ''undefined) (concretize retTy))
+      rt = return $ AppE (ConE 'ImplType) (SigE (VarE $ 'undefined) (concretize retTy))
 
 -- Convert Version/NonVersion arguments to proper (concrete) Type expressions
 -- todo: This needs to be more principled, this translation turns everything not-concrete into `Int'
