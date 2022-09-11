@@ -11,7 +11,6 @@ import Test.Rufous
    , makeADTSignature
    , shadowUndefined
    , guardFailed
-   , extractorUndefined
    , mainWith
    , args
    , outputArgs
@@ -23,9 +22,6 @@ class Queue q where
    tail :: q a -> q a
    head :: q a -> a
 
-   extractShadow :: q a -> ShadowQueue a
-   extractShadow = extractorUndefined
-
 -- simple list implementation
 newtype ListQueue a = ListQueue [a]
    deriving (Show)
@@ -35,8 +31,6 @@ instance Queue ListQueue where
    empty = ListQueue []
    head (ListQueue xs) = P.head xs
    tail (ListQueue xs) = ListQueue $ P.tail xs
-
-   extractShadow (ListQueue xs) = ShadowQueue xs
 
 
 -- double list batched queue
@@ -84,8 +78,8 @@ data ShadowQueue x = ShadowQueue Int
 instance Queue ShadowQueue where
    snoc x (ShadowQueue n) = ShadowQueue (n + 1)
    empty     = ShadowQueue 0
-   head (ShadowQueue 0) = shadowUndefined
-   head (ShadowQueue _) = guardFailed
+   head (ShadowQueue 0) = guardFailed
+   head (ShadowQueue _) = shadowUndefined
    tail (ShadowQueue 0) = guardFailed
    tail (ShadowQueue n) = ShadowQueue (n - 1)
 
