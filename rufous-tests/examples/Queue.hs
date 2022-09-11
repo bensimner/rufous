@@ -78,17 +78,16 @@ instance Queue RQueue where
 -- the Shadow implementation
 
 
-data ShadowQueue x = ShadowQueue [x]
+data ShadowQueue x = ShadowQueue Int
    deriving (Show,Eq)
 
 instance Queue ShadowQueue where
-   snoc x (ShadowQueue xs) = ShadowQueue (xs ++ [x])
-   empty     = ShadowQueue []
-   head (ShadowQueue (y:_)) = y
-   head (ShadowQueue []) = guardFailed
-
-   tail (ShadowQueue (_:xs))  = ShadowQueue xs
-   tail (ShadowQueue []) = guardFailed
+   snoc x (ShadowQueue n) = ShadowQueue (n + 1)
+   empty     = ShadowQueue 0
+   head (ShadowQueue 0) = shadowUndefined
+   head (ShadowQueue _) = guardFailed
+   tail (ShadowQueue 0) = guardFailed
+   tail (ShadowQueue n) = ShadowQueue (n - 1)
 
 makeADTSignature ''Queue
 
