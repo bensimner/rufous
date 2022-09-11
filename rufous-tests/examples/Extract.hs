@@ -132,3 +132,8 @@ main = do
          (l, k) <- diffs
          return $ putStrLn $ " ! " ++ show k ++ " vs " ++ show l
    else return ()
+
+   putStrLn "[press enter to run DUG]"
+   _ <- getLine
+
+   mainWith args{signature=_ListADT, dugs=[dug]}
