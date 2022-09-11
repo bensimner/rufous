@@ -5,9 +5,6 @@ module Main where
 import Prelude hiding (head, tail)
 import qualified Prelude as P
 
--- import qualified pqueue
--- import qualified thrist
-
 import Test.Rufous
    ( RufousOptions(..)
    , OutputOptions(..)
@@ -77,6 +74,10 @@ instance Queue RQueue where
    head (RQ (f:_) _ _) = f
    tail (RQ (_:fs) b ss) = rq fs b ss
 
+
+-- the Shadow implementation
+
+
 data ShadowQueue x = ShadowQueue [x]
    deriving (Show,Eq)
 
@@ -96,14 +97,8 @@ main = mainWith
          args
             { signature=_Queue
             , averageDugSizes=[100, 1000, 10000]
-            , numberOfTests=50 -- number of DUGs to generate
-
-            , info=True -- equivalent to saying verbosity=1
-            , outputOptions=
-               outputArgs
-                  { dumpDUGs=False  -- set to True to create output/dugName.pdf graphviz output
-                  , dumpDUGDetail=2 -- show shadow in the graphviz output
-                  }
+            , numberOfTests=500 -- number of DUGs to generate
+            , verbose=True
             }
 
 {- EXAMPLE OUTPUT
