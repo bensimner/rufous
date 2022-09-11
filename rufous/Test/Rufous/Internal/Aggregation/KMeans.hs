@@ -19,6 +19,7 @@ import qualified Test.Rufous.Run as R
 
 import Test.Rufous.Internal.Aggregation.Types
 import qualified Test.Rufous.Internal.Logger as Log
+import qualified Test.Rufous.Internal.Utils as U
 
 aggregateKMeans :: KMeansOptions -> [R.Result] -> IO [AggregatedResult]
 aggregateKMeans opts rs = do
@@ -120,7 +121,7 @@ allocateGroups rs clusters = allocated
 
 partition :: [(R.Result, [Float])] -> [[Float]] -> [[R.Result]]
 partition pairs clusters = partPairs ordered
-   where tagged = [(r, i) | (r, alloc) <- pairs, (i, _) <- find alloc (ranged clusters)]
+   where tagged = [(r, i) | (r, alloc) <- pairs, (i, _) <- find alloc (U.ranged clusters)]
          ordered = sortOn snd tagged
 
 find :: [Float] -> [(Int, [Float])] -> [(Int, [Float])]
@@ -152,6 +153,3 @@ dist x y = sum $ map (uncurry diff) (zip x y)
       diff a b | isNaN a && isNaN b = 0
       diff a b | isNaN a || isNaN b = 1 -- since the vectors are normalised, 1 is the max distance they can have
       diff a b = (b - a) ** (2 :: Float)
-
-ranged :: [a] -> [(Int, a)]
-ranged xs = zip [0..] xs

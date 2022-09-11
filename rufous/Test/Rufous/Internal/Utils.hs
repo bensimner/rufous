@@ -40,3 +40,7 @@ psequence (a:as) = do
 -- | pseq is like seq but actually enforces evaluation order between them, not just strictness
 pseq :: a -> b -> b
 pseq !a b = b
+
+-- | ranged xs yields pairs of (index,item) from xs
+ranged :: [a] -> [(Int, a)]
+ranged xs = zip [0..] xs

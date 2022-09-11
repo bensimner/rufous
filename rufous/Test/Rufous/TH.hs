@@ -512,7 +512,7 @@ mkImplBuilderVar ty (name, args) = (name, argTysToType ty args, aTypeToType ty f
 
 buildImpl :: Maybe IMPLDef -> Maybe Pair -> InstanceBuilder -> Q Exp
 -- TODO: Cxt ?  e.g. what to do about `instance Ord k => A (Foo k)` ?
-buildImpl maybeShadow maybeShadowExtractor i = [| Implementation $(ctorNameStr) (M.fromList $methods) $maybeShadowExtractorExp $eqTysExpr $showTysExpr |]
+buildImpl maybeShadow maybeShadowExtractor i = [| Implementation $(ctorNameStr) (M.fromList $methods) $maybeShadowExtractorExp $eqTysExpr $showTysExpr $implUndefined |]
    where ctorNameStr = return $ LitE $ StringL (userfriendlyTypeString (implTyCtor (instDef i)))
          methods = buildImplPairs (instMethods i)
          maybeShadowExtractorExp =
@@ -533,6 +533,9 @@ buildImpl maybeShadow maybeShadowExtractor i = [| Implementation $(ctorNameStr) 
 
          tcDictPairs g sh = map (tcDictPair g sh) (instAbstMethods i)
          tcDictPair g sh m@(n, _) = [| ($(return $ LitE $ StringL n), $(g sh m)) |]
+
+         implTy = return $ AppT (implTyCtor (instDef i)) (ConT ''Int)
+         implUndefined = [| toDyn (undefined :: $implTy) |]
 
 type TCDictGen = IMPLDef -> Pair -> Q Exp
 
@@ -585,7 +588,7 @@ buildImplPair (name, ty, retTy) = [| ($nameStr, ($var, $rt)) |]
    where
       nameStr = return $ LitE $ StringL name
       var = return $ AppE (VarE 'toDyn) (SigE (VarE (mkName name)) (concretize ty))
-      rt = return $ AppE (ConE 'ImplType) (SigE (VarE $ mkName "undefined") (concretize retTy))
+      rt = return $ AppE (ConE 'ImplType) (SigE (VarE $ ''undefined) (concretize retTy))
 
 -- Convert Version/NonVersion arguments to proper (concrete) Type expressions
 -- todo: This needs to be more principled, this translation turns everything not-concrete into `Int'

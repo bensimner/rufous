@@ -29,11 +29,13 @@ data Implementation =
       -- | specialization of (show) if it exists
       -- required for Shadow* implementations
       , _implShow :: Maybe (M.Map String Dynamic)
+      -- | an `undefined :: Implementation Int` hidden behind a Dynamic
+      , _implUndefined :: Dynamic
       }
 makeLenses ''Implementation
 
 instance Show Implementation where
-  show (Implementation impl _ _ _ _) = "<" ++ impl ++ ">"
+  show (Implementation impl _ _ _ _ _) = "<" ++ impl ++ ">"
 instance Eq Implementation where
   i1 == i2 = i1^.implName == i2^.implName
 instance Ord Implementation where

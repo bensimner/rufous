@@ -28,6 +28,7 @@ import Test.Rufous.Internal.Evaluation.Types
 import Test.Rufous.Internal.Evaluation.Results as Rs
 import qualified Test.Rufous.Internal.DUG.Spanning as MST
 import qualified Test.Rufous.Internal.Logger as Log
+import qualified Test.Rufous.Internal.Utils as U
 
 -- | Run a DUG on some null implementation and a list of implementations
 -- and return the new annotated DUG with the timing info
@@ -212,7 +213,7 @@ makeShadowDynCell s impl d o args =
    makeDynCellGen s impl d o args (\n -> fromJust $ n^.D.shadow)
 
 makeDynCellGen :: S.Signature -> S.Implementation -> D.DUG -> S.Operation -> [D.DUGArg] -> (D.Node -> Dynamic) -> Dynamic
-makeDynCellGen _ impl d o args fn = dynResult f dynArgs
+makeDynCellGen s impl d o args fn = dynResult f dynArgs
    where f :: Dynamic
          Just (f, _) = impl ^. S.implOperations ^. at (o^.S.opName)
          dynResult r [] = r
@@ -222,8 +223,9 @@ makeDynCellGen _ impl d o args fn = dynResult f dynArgs
             arg <- args
             case arg of
                S.Version i -> do
-                  let Just n = d^.D.operations . at i
-                  return $ fn n
+                  case d^.D.operations . at i of
+                     Just n -> return $ fn n
+                     Nothing -> return $ impl^.S.implUndefined
                S.NonVersion (S.ArbArg _ v _) ->
                   return $ toDyn v
                S.NonVersion (S.VersionParam k) -> return $ toDyn (k :: Int)
