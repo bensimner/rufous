@@ -218,10 +218,11 @@ refreshProgress = doIfIO ifShowProgress $ do
         Just prog -> do
             let k = progLastLength prog
             let bar = makeProgressSegments (progCurrentPartition prog) (progCurrentProgress prog) (progPartitionWeights prog) (progPartitionMax prog) ++ " " ++ progCurrentMessage prog
+            ctime <- getCurrentTime
             outf <- debugStream
             hPutStr outf $ "\r" ++ bar ++ replicate (k - length bar) '#'
             hFlush outf
-            ctime <- getCurrentTime
+            doIfIO (Opt.lineBufferedProgressBars . Opt.outputOptions) $ hPutStr outf "\n"
             Ref.writeIORef _progressBar (Just (prog{progLastUpdate=ctime, progLastLength=length bar}))
             return ()
         Nothing -> return ()

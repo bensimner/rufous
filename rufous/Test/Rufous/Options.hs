@@ -111,6 +111,7 @@ data OutputOptions =
       , dumpPhaseTiming :: Bool
       , showNullTimes :: Bool
       , showProgressBars :: Bool
+      , lineBufferedProgressBars :: Bool -- progress bar on separate lines
       , showDUGRunTimes :: Bool
       , showDUGGeneration :: Bool
    }
@@ -187,6 +188,7 @@ outputArgs =
       , dumpPhaseTiming=False
       , showNullTimes=False
       , showProgressBars=True
+      , lineBufferedProgressBars=False
       , showDUGRunTimes=False
       , showDUGGeneration=False
       }
