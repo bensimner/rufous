@@ -446,11 +446,11 @@ mkExtractorImplFromPair (name, args) = do
    let pats = map (^. _1) patterns
    let call = buildCall name' (zip [0..] patterns)
    if not . isVersion . last $ args then do
-      impl' <- [| unsafePerformIO $ _get_id >>= (\curId -> return (_log_observer curId $nameLit $(call [| curId |] ) )) |]
+      impl' <- [| unsafePerformIO $ _get_tmp_id >>= (\curId -> return (_log_observer curId $nameLit $(call [| curId |] ) )) |]
       return $ [FunD name' [Clause pats (NormalB $ impl') []]
                , PragmaD (InlineP name' NoInline FunLike AllPhases)]
    else do
-      impl' <- [| unsafePerformIO $ _get_id >>= (\curId -> return (_log_operation curId $nameLit $(call [| curId |] ) )) |]
+      impl' <- [| unsafePerformIO $ _get_tmp_id >>= (\curId -> return (_log_operation curId $nameLit $(call [| curId |] ) )) |]
       return $ [FunD name' [Clause pats (NormalB $ impl') []]
                , PragmaD (InlineP name' NoInline FunLike AllPhases)]
 

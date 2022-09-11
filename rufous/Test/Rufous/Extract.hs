@@ -14,6 +14,7 @@ import qualified Data.Map as M
 
 import qualified Test.Rufous.DUG as D
 import qualified Test.Rufous.Signature as S
+import qualified Test.Rufous.Internal.Utils as U
 
 -- | The type of an extracted ADT arg
 type ExtractedArg t x = S.Arg (WrappedADT t x) x ()
@@ -39,6 +40,11 @@ data WrappedADT t x =
       }
    deriving (Show)
 
+-- | the partial DUG, as a list-of-births
+-- the Id is the index in the list, is the order that versions are forced
+-- which is backwards from the order they must be evaluated
+--
+-- Note that, beacuse of laziness, arguments may be evaluated later.
 data PartialDUG =
    Partial
       { partialNodes :: !(M.Map Id String)            -- which nodes are which operations
@@ -51,7 +57,13 @@ data PartialDUG =
 data ExtractorState t x =
    ExtractorState
       { partial :: PartialDUG
-      , currentIndex :: Id
+      , currentBirth :: Id
+      -- when the version is forced, the generated extractor will evaluate the body first
+      -- which will in turn evaluate the arguments, but we need to tell the arguments which version
+      -- so we attach this currentTmpIndex and later on when the operation is finally forced
+      -- we read back that tmp index and assign the real Id.
+      , currentTmpIndex :: Id
+      , tmpArgs :: !(M.Map (Id, Int) D.DUGArg)    -- (caller tmpNodeId, argN) -> arg
       }
    deriving (Show)
 
@@ -59,7 +71,7 @@ emptyPartialDUG :: PartialDUG
 emptyPartialDUG = Partial M.empty M.empty
 
 emptyExtractorState :: ExtractorState t x
-emptyExtractorState = ExtractorState emptyPartialDUG 0
+emptyExtractorState = ExtractorState emptyPartialDUG 1 1 M.empty
 
 state :: MVar (ExtractorState t x)
 state = unsafePerformIO $ newEmptyMVar
@@ -103,41 +115,64 @@ _const curId _ = curId
 {-# NOINLINE _get_id #-}
 _get_id :: IO Id
 _get_id = do
-   (ExtractorState p curId) <- takeMVar state
-   putMVar state (ExtractorState p (curId+1))
-   return $ curId
+   (ExtractorState p curId curTmpId tmpArgs) <- takeMVar state
+   putMVar state (ExtractorState p (curId+1) curTmpId tmpArgs)
+   return curId
 
+{-# NOINLINE _get_tmp_id #-}
+_get_tmp_id :: IO Id
+_get_tmp_id = do
+   (ExtractorState p curId curTmpId tmpArgs) <- takeMVar state
+   putMVar state (ExtractorState p curId (curTmpId+1) tmpArgs)
+   return curTmpId
+
+{-# NOINLINE _log_operation #-}
 _log_operation :: Id -> String -> t x -> WrappedADT t x
-_log_operation !curId opName x = unsafePerformIO $ do
-   updateWrapper curId opName (S.Version x)
+_log_operation curId opName x = x `U.pseq` body
+   where
+      body = unsafePerformIO $ do
+         updateWrapper curId opName (S.Version x)
 
+{-# NOINLINE _log_observer #-}
 _log_observer :: Id -> String -> x -> x
-_log_observer !curId opName x = unsafePerformIO $ do
-   _ <- updateWrapper curId opName (S.NonVersion (S.VersionParam (unsafeCoerce x))) -- TODO: this won't always be a version param
-   return x
+_log_observer curId opName x = x `U.pseq` body
+   where
+      body = unsafePerformIO $ do
+         _ <- updateWrapper curId opName (S.NonVersion (S.VersionParam (unsafeCoerce x))) -- TODO: this won't always be a version param
+         return x
 
 updateWrapper :: Id -> String -> UnwrappedArg t x -> IO (WrappedADT t x)
-updateWrapper !curId opName v = do
-   (ExtractorState (Partial pnodes pargs) i) <- takeMVar state
+updateWrapper !curTmpId opName v = do
+   curId <- _get_id
+   (ExtractorState (Partial pnodes pargs) i t tmpArgs) <- takeMVar state
    let w = WrappedADT curId opName v
-   let p' = Partial (M.insert curId opName pnodes) pargs
-   let st' = ExtractorState p' i
+   let pnodes' = M.insert curId opName pnodes
+   let tmpArgRemoved = M.filterWithKey (\(parentId, _) _ -> parentId == curTmpId) tmpArgs
+   let tmpArgs' = M.difference tmpArgs tmpArgRemoved
+   let pargsExtra = M.mapKeys (\(_,argId) -> (curId,argId)) tmpArgRemoved
+   let pargs' = M.union pargs pargsExtra  
+   let p' = Partial pnodes' pargs'
+   let st' = ExtractorState p' i t tmpArgs'
    putMVar state st'
    return $ seq state w
 
 updateArg :: Id -> Int -> D.DUGArg -> IO ()
-updateArg !parentId !argId darg = do
-   (ExtractorState (Partial pnodes pargs)  curId) <- takeMVar state
-   let p' = Partial pnodes (M.insert (parentId, argId) darg pargs)
-   let st' = ExtractorState p' curId
+updateArg !parentId argId darg = do
+   (ExtractorState p curId curTmpId tmpArgs) <- takeMVar state
+   let tmpArgs' = M.insert (parentId, argId) darg tmpArgs
+   let st' = ExtractorState p curId curTmpId tmpArgs'
    putMVar state st'
    return $ seq state ()
 
 unwrap :: Id -> Int -> WrappedADT t x -> t x
-unwrap !parentId !argId w = case value w of
-   S.Version x -> seq update x
+unwrap !parentId argId w = case value w of
+   S.Version x -> x `U.pseq` update x
    _ -> error "unwrap :: expected version arg"
-   where update = unsafePerformIO $ updateArg parentId argId (S.Version (nodeId w))
+   where
+      update x = unsafePerformIO $ do
+         updateArg parentId argId (S.Version (nodeId w))
+         return x
+{-# NOINLINE unwrap #-}
 
 nonversion :: Id -> Int -> ExtractedArg t x -> a -> a
 nonversion !parentId !argId (S.NonVersion nva) x = seq update x

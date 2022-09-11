@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 module Test.Rufous.Internal.Utils where
 
 import Control.Exception (Exception, throwIO)
@@ -35,3 +36,7 @@ psequence (a:as) = do
     v <- a
     rm <- v `seq` psequence as
     return (v:rm)
+
+-- | pseq is like seq but actually enforces evaluation order between them, not just strictness
+pseq :: a -> b -> b
+pseq !a b = b
